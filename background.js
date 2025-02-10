@@ -3,19 +3,23 @@ let proxyEnabled = false;
 
 
 // Function to change the popup icon
-function setPopupIcon(active) {
-    const iconPath = active ? "online.png" : "offline.png";
+function setPopupIcon(base) {
+    if (typeof base === "boolean") {
+        base = base ? "online" : "offline";
+    }
+    let iconPath = base + ".png";
+    console.log("set icon path to: " + iconPath);
 
     chrome.action.setIcon({ path: iconPath }, () => {
         if (chrome.runtime.lastError) {
-            console.error("Error setting icon to " + active + ":", chrome.runtime.lastError.message);
+            console.error("Error setting icon to " + iconPath + ":", chrome.runtime.lastError.message);
         }
     });
 }
 
 // Function to enable the proxy
 function enableProxy() {
-    if (disconnected) {
+    if (deadPort) {
         console.error("Cannot enable proxy, disconnected from native host");
         return;
     }
@@ -28,44 +32,115 @@ function enableProxy() {
     }
 }
 
-// Function to disable the proxy
 function disableProxy() {
     setProxy(0);
-    
-    if (disconnected) {
-        console.error("Cannot disable proxy, disconnected from native host");
-        return;
-    }
-
-    // Send message to port
-    //nmPort.postMessage({ cmd: "down" });
 }
 
 console.log("starting ts-browser-ext");
 
-console.log("Connecting to native messaging host...");
-let nmPort = chrome.runtime.connectNative("com.tailscale.browserext.chrome");
-let disconnected = false;
-let portError = ""; // error.message if/when nmPort disconnected
+let popupPort = null;
 
-nmPort.onDisconnect.addListener(() => {
-    disconnected = true;
-    const error = chrome.runtime.lastError;
-    if (error) {
-        console.error("Connection failed:", error.message);
-        portError = error.message;
-    } else {
-        console.error("Disconnected from native host");
+chrome.runtime.onConnect.addListener((port) => {
+    if (port.name != "popup") {
+        return;
     }
+    popupPort = port;
+
+    console.log("Popup connected");
+    
+    // Handle messages from the popup if needed
+    port.onMessage.addListener((msg) => {
+        console.log("Message from popup:", msg);
+    });
+
+    port.onDisconnect.addListener(() => {
+        console.log("Popup disconnected");
+        popupPort = null;
+    });
+
+    sendPopupStatus();
 });
-nmPort.onMessage.addListener((message) => {
-    console.log("message from backend: ", message);
 
-    let st = message.status;
-    if (st && st.running && st.proxyPort && proxyEnabled) {
-        setProxy(st.proxyPort);
+// browserByte returns either "F" for Firefox or "C" for chrome.
+// Other browsers return "?".
+function browserByte() {
+    if (typeof chrome !== "undefined") {
+        if (typeof browser !== "undefined") {
+            return "F"; // Firefox supports both `chrome` and `browser`
+        }
+        return "C"; 
     }
-})
+    return "?";
+}
+
+function sendPopupStatus() {
+    if (deadPort) {
+        setPopupIcon("need-install")
+        console.log("sendPopupStatus... no nmPort");
+        sendToPopup({installCmd: "go run github.com/bradfitz/ts-browser-ext@main --install=" + browserByte() + chrome.runtime.id})
+        return;
+    }
+    setPopupIcon("online"); // TODO: be offline/online/etc
+
+    console.log("sendPopupStatus... have nmPort");
+    sendToPopup("native conn good");
+}
+
+function sendToPopup(v) {
+    if (popupPort) {
+        popupPort.postMessage(v);
+    }
+}
+
+let nmPort = null; // even non-null if lacking permission
+let deadPort = true;
+let portError = null;
+
+connectToNativeHost();
+
+function connectToNativeHost() {
+    if (nmPort && !deadPort) {
+        return;
+    }
+    console.log("Connecting to native messaging host...");
+    nmPort = chrome.runtime.connectNative("com.tailscale.browserext.chrome");
+
+    nmPort.onDisconnect.addListener(() => {
+        deadPort = true;
+        setPopupIcon("need-install")
+        disableProxy();
+        const error = chrome.runtime.lastError;
+        if (error) {
+            console.error("Connection failed:", error.message);
+            portError = error.message;
+            setTimeout(connectToNativeHost, 1000);
+        } else {
+            console.error("Disconnected from native host");
+        }
+    });
+    nmPort.onMessage.addListener((message) => {
+        console.log("got message: " + JSON.stringify(message));
+        if (deadPort) {
+            console.log("connected to native backend");
+            deadPort = false;
+        }
+        if (message.procRunning) {
+            if (message.procRunning.port) {
+                setProxy(message.procRunning.port);
+            } else if (message.procRunning.errror) {
+                console.log("procRunning error from backend: " + message.init.err);
+                disableProxy();
+            }
+        }
+        maybeSendInit();
+        sendPopupStatus();
+
+        // let st = message.status;
+        // if (st && st.running && st.proxyPort && proxyEnabled) {
+        //     setProxy(st.proxyPort);
+        // }
+    })
+}
 
 var lastProxyPort = 0;
 
@@ -109,31 +184,35 @@ function setProxy(proxyPort) {
     );
 }
 
+var profileID = "";
+var didInit = false;
+
+function maybeSendInit() {
+    if (!profileID || didInit || deadPort) {
+        return;
+    }
+    nmPort.postMessage({ cmd: "init", initID: profileID });
+    didInit = true;
+}
+
 chrome.storage.local.get("profileId", (result) => {
     if (!result.profileId) {
         const profileId = crypto.randomUUID();
         chrome.storage.local.set({ profileId }, () => {
             console.log("Generated profile ID:", profileId);
-            nmPort.postMessage({ cmd: "init", initID: profileId });
+            profileID = profileId;
+            maybeSendInit()
         });
     } else {
         console.log("Profile ID already exists:", result.profileId);
-        nmPort.postMessage({ cmd: "init", initID: result.profileId });
+        profileID   = result.profileId;
+        maybeSendInit()
     }
 });
 
 
 // Listener for messages from the popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.command === "queryState") {
-        if (disconnected) {
-            sendResponse({ status: "Error", error: portError });
-            return;
-        }
-        console.log("bg: queryState, proxy=" + proxyEnabled);
-        sendResponse({ status: proxyEnabled ? "Connected" : "Disconnected" });
-        return
-    } 
 
     if (message.command === "toggleProxy") {
         console.log("bg: toggleProxy, proxy=" + proxyEnabled);

@@ -17,11 +17,14 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/gorilla/csrf"
+	"tailscale.com/client/web"
 	"tailscale.com/hostinfo"
 	"tailscale.com/ipn"
 	"tailscale.com/net/proxymux"
@@ -31,7 +34,8 @@ import (
 )
 
 var (
-	installFlag = flag.String("install", "", "register the browser extension's backend with the given browser, one of: chrome, firefox")
+	installFlag   = flag.String("install", "", "register the browser extension; string is 'C' (Chrome) or 'F' (Firefox) followed by extension ID")
+	uninstallFlag = flag.Bool("uninstall", false, "unregister the browser extension")
 )
 
 func main() {
@@ -42,6 +46,13 @@ func main() {
 		}
 		return
 	}
+	if *uninstallFlag {
+		if err := uninstall(); err != nil {
+			log.Fatalf("uninstallation error: %v", err)
+		}
+		return
+	}
+
 	if flag.NArg() == 0 {
 		fmt.Printf(`ts-browser-ext is the backend for the Tailscale browser extension,
 running as a child process HTTP/SOCKS5 under your browser.
@@ -62,16 +73,25 @@ To register it once, run:
 		h.logf = func(f string, a ...any) {
 			fmt.Fprintf(w, f, a...)
 		}
+		log.SetOutput(w)
 	} else {
 		log.Printf("syslog: %v", err)
 	}
 
+	ln := h.getProxyListener()
+	port := ln.Addr().(*net.TCPAddr).Port
+	h.logf("Proxy listening on localhost:%v", port)
+
+	h.send(&reply{ProcRunning: &procRunningResult{
+		Port: port,
+		Pid:  os.Getpid(),
+	}})
 	h.logf("Starting readMessages loop")
 	err := h.readMessages()
 	h.logf("readMessage loop ended: %v", err)
 }
 
-func getTargetDir(browser string) (string, error) {
+func getTargetDir(browserByte string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -89,13 +109,39 @@ func getTargetDir(browser string) (string, error) {
 	return dir, nil
 }
 
-func install(browser string) error {
+func uninstall() error {
+	for _, browserByte := range []string{"C", "F"} {
+		targetDir, err := getTargetDir(browserByte)
+		if err != nil {
+			return err
+		}
+		targetBin := filepath.Join(targetDir, "ts-browser-ext")
+		targetJSON := filepath.Join(targetDir, "com.tailscale.browserext.chrome.json")
+		if browserByte == "F" {
+			targetJSON = filepath.Join(targetDir, "com.tailscale.browserext.firefox.json")
+		}
+		if err := os.Remove(targetBin); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.Remove(targetJSON); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func install(installArg string) error {
+	browser, extension := installArg[0:1], installArg[1:]
 	switch browser {
-	case "chrome":
-	case "firefox":
+	case "C":
+	case "F":
 		return errors.New("TODO: firefox")
 	default:
 		return fmt.Errorf("unknown browser %q", browser)
+	}
+	extensionRE := regexp.MustCompile(`^[a-z0-9]{32}$`)
+	if !extensionRE.MatchString(extension) {
+		return fmt.Errorf("invalid extension ID %q", extension)
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -118,13 +164,13 @@ func install(browser string) error {
 	log.Printf("copied binary to %v", targetBin)
 	jsonConf := fmt.Appendf(nil, `{
 		"name": "com.tailscale.browserext.chrome",
-		"description": "Tailscale Native Extension",
+		"description": "Tailscale Browser Extension",
 		"path": "%s",
 		"type": "stdio",
 		"allowed_origins": [
-			"chrome-extension://mldijmhffomelkfhfjcjekhjgaikhood/"
+			"chrome-extension://%s/"
 		]
-	  }`, targetBin)
+	  }`, targetBin, extension)
 	if err := os.WriteFile(targetJSON, jsonConf, 0644); err != nil {
 		return err
 	}
@@ -143,6 +189,7 @@ type host struct {
 
 	mu     sync.Mutex
 	ts     *tsnet.Server
+	ws     *web.Server
 	ln     net.Listener
 	wantUp bool
 	// ...
@@ -279,6 +326,19 @@ func (h *host) handleInit(msg *request) (ret error) {
 	}
 	h.logf("Started")
 
+	lc, err := h.ts.LocalClient()
+	if err != nil {
+		return fmt.Errorf("getting local client: %w", err)
+	}
+
+	h.ws, err = web.NewServer(web.ServerOpts{
+		Mode:        web.LoginServerMode, // TODO: manage?
+		LocalClient: lc,
+	})
+	if err != nil {
+		return fmt.Errorf("NewServer: %w", err)
+	}
+
 	return nil
 }
 
@@ -320,7 +380,7 @@ func (h *host) getProxyListenerLocked() net.Listener {
 	}
 	socksListener, httpListener := proxymux.SplitSOCKSAndHTTP(h.ln)
 
-	hs := &http.Server{Handler: httpProxyHandler(h.userDial)}
+	hs := &http.Server{Handler: h.httpProxyHandler()}
 	go func() {
 		log.Fatalf("HTTP proxy exited: %v", hs.Serve(httpListener))
 	}()
@@ -343,20 +403,18 @@ func (h *host) userDial(ctx context.Context, netw, addr string) (net.Conn, error
 		h.logf("userDial to %v/%v without a tsnet.Server started", netw, addr)
 		return nil, fmt.Errorf("no tsnet.Server")
 	}
+
 	return sys.Dialer.Get().UserDial(ctx, netw, addr)
 }
 
 func (h *host) sendStatus() {
 	h.mu.Lock()
 	wantUp := h.wantUp
-	ln := h.getProxyListenerLocked()
 	h.mu.Unlock()
 
 	if err := h.send(&reply{
 		Status: &status{
-			Running:   wantUp,
-			ProxyPort: ln.Addr().(*net.TCPAddr).Port,
-			ProxyURL:  "http://" + ln.Addr().String(),
+			Running: wantUp,
 		},
 	}); err != nil {
 		h.logf("failed to send status: %v", err)
@@ -390,8 +448,16 @@ type request struct {
 
 // reply is a message to the browser extension.
 type reply struct {
-	Status *status     `json:"status,omitempty"`
-	Init   *initResult `json:"init,omitempty"`
+	// ProcRunning is set on the first
+	ProcRunning *procRunningResult `json:"procRunning,omitempty"`
+	Status      *status            `json:"status,omitempty"`
+	Init        *initResult        `json:"init,omitempty"`
+}
+
+type procRunningResult struct {
+	Port  int    `json:"port"` // HTTP+SOCKS5 localhost proxy port
+	Pid   int    `json:"pid"`
+	Error string `json:"error"`
 }
 
 type initResult struct {
@@ -399,9 +465,7 @@ type initResult struct {
 }
 
 type status struct {
-	ProxyPort int    `json:"proxyPort"`
-	ProxyURL  string `json:"proxyURL"`
-	Running   bool   `json:"running"`
+	Running bool `json:"running"`
 }
 
 func (h *host) readMessage() (*request, error) {
@@ -426,14 +490,20 @@ func (h *host) readMessage() (*request, error) {
 
 // httpProxyHandler returns an HTTP proxy http.Handler using the
 // provided backend dialer.
-func httpProxyHandler(dialer func(ctx context.Context, netw, addr string) (net.Conn, error)) http.Handler {
+func (h *host) httpProxyHandler() http.Handler {
 	rp := &httputil.ReverseProxy{
 		Director: func(r *http.Request) {}, // no change
 		Transport: &http.Transport{
-			DialContext: dialer,
+			DialContext: h.userDial,
 		},
 	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host == "100.100.100.100" {
+			h.ws.ServeHTTP(w, csrf.PlaintextHTTPRequest(r))
+			return
+		}
+
 		if r.Method != "CONNECT" {
 			backURL := r.RequestURI
 			if strings.HasPrefix(backURL, "/") || backURL == "*" {
@@ -447,7 +517,7 @@ func httpProxyHandler(dialer func(ctx context.Context, netw, addr string) (net.C
 		// CONNECT support:
 
 		dst := r.RequestURI
-		c, err := dialer(r.Context(), "tcp", dst)
+		c, err := h.userDial(r.Context(), "tcp", dst)
 		if err != nil {
 			w.Header().Set("Tailscale-Connect-Error", err.Error())
 			http.Error(w, err.Error(), 500)
