@@ -100,8 +100,18 @@ func getTargetDir(browserByte string) (string, error) {
 	}
 	var dir string
 	switch runtime.GOOS {
+	case "linux":
+		if browserByte == "C" {
+			dir = filepath.Join(home, ".config", "google-chrome", "NativeMessagingHosts")
+		} else if browserByte == "F" {
+			dir = filepath.Join(home, ".mozilla", "native-messaging-hosts")
+		}
 	case "darwin":
-		dir = filepath.Join(home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts")
+		if browserByte == "C" {
+			dir = filepath.Join(home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts")
+		} else if browserByte == "F" {
+			dir = filepath.Join(home, "Library", "Application Support", "Mozilla", "NativeMessagingHosts")
+		}
 	default:
 		return "", fmt.Errorf("TODO: implement support for installing on %q", runtime.GOOS)
 	}
@@ -133,13 +143,13 @@ func uninstall() error {
 }
 
 func install(installArg string) error {
-	browser, extension := installArg[0:1], installArg[1:]
-	switch browser {
+	browserByte, extension := installArg[0:1], installArg[1:]
+	switch browserByte {
 	case "C":
 	case "F":
 		return errors.New("TODO: firefox")
 	default:
-		return fmt.Errorf("unknown browser %q", browser)
+		return fmt.Errorf("unknown browser prefix byte %q", browserByte)
 	}
 	extensionRE := regexp.MustCompile(`^[a-z0-9]{32}$`)
 	if !extensionRE.MatchString(extension) {
@@ -149,7 +159,7 @@ func install(installArg string) error {
 	if err != nil {
 		return err
 	}
-	targetDir, err := getTargetDir(browser)
+	targetDir, err := getTargetDir(browserByte)
 	if err != nil {
 		return err
 	}
@@ -158,13 +168,19 @@ func install(installArg string) error {
 		return err
 	}
 	targetBin := filepath.Join(targetDir, "ts-browser-ext")
-	targetJSON := filepath.Join(targetDir, "com.tailscale.browserext.chrome.json")
 	if err := os.WriteFile(targetBin, binary, 0755); err != nil {
 		return err
 	}
 	log.SetFlags(0)
 	log.Printf("copied binary to %v", targetBin)
-	jsonConf := fmt.Appendf(nil, `{
+
+	var targetJSON string
+	var jsonConf []byte
+
+	switch browserByte {
+	case "C":
+		targetJSON = filepath.Join(targetDir, "com.tailscale.browserext.chrome.json")
+		jsonConf = fmt.Appendf(nil, `{
 		"name": "com.tailscale.browserext.chrome",
 		"description": "Tailscale Browser Extension",
 		"path": "%s",
@@ -173,6 +189,20 @@ func install(installArg string) error {
 			"chrome-extension://%s/"
 		]
 	  }`, targetBin, extension)
+	case "F":
+		targetJSON = filepath.Join(targetDir, "com.tailscale.browserext.firefox.json")
+		jsonConf = fmt.Appendf(nil, `{
+		"name": "com.tailscale.browserext.firefox",
+		"description": "Tailscale Browser Extension",
+		"path": "%s",
+		"type": "stdio",
+		"allowed_extensions": [
+			"browser-ext@tailscale.com"
+		]
+	  }`, targetBin)
+	default:
+		return fmt.Errorf("unknown browser prefix byte %q", browserByte)
+	}
 	if err := os.WriteFile(targetJSON, jsonConf, 0644); err != nil {
 		return err
 	}
