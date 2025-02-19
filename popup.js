@@ -1,3 +1,5 @@
+var lastStatus;
+
 document.addEventListener("DOMContentLoaded", () => {
     let btn = document.getElementById("button");
     let st = document.getElementById("state");
@@ -5,6 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let port = chrome.runtime.connect({ name: "popup" });
 
     port.onMessage.addListener((msg) => {
+        console.log("Received from background:", JSON.stringify(msg))
         if (msg.installCmd) {
             st.innerHTML = "<b>Installation needed. Run:</b><pre>" + msg.installCmd + "</pre>";
             btn.hidden = true;
@@ -16,8 +19,21 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.hidden = true;
             return;
         }
-        btn.hidden = false;
-        console.log("Received from background:", msg);
+        let sm = msg.status;
+        if (sm) {
+            lastStatus = sm;
+            console.log("Status from background:", JSON.stringify(sm));
+            if (sm.error) {
+                console.log("Status error:", sm.error);
+                st.innerText = sm.error;
+                btn.hidden = true;
+                return;
+            }
+            st.innerText = (sm.running ? "🟢" : "🔴") + " " + sm.tailnet;
+            btn.hidden = false;
+            btn.innerText = "Settings";
+            return
+        }
 
         st.innerText = msg;
     });
@@ -25,6 +41,11 @@ document.addEventListener("DOMContentLoaded", () => {
     window.onunload = () => { port.disconnect(); }; // probably redundant
 
     btn.addEventListener("click", () => {
+        if (btn.innerText == "Settings") { // trashy :)
+            // Open tab to a URL ...
+            chrome.tabs.create({ url: "http://100.100.100.100" });
+            return
+        }
         port.postMessage({ command: "toggleProxy" });
     });
 })

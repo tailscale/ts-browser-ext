@@ -82,8 +82,7 @@ function sendPopupStatus() {
     }
     setPopupIcon("online"); // TODO: be offline/online/etc
 
-    console.log("sendPopupStatus... have nmPort");
-    sendToPopup("native conn good");
+    sendToPopup({ status: lastStatus });
 }
 
 function sendToPopup(v) {
@@ -128,27 +127,32 @@ function connectToNativeHost() {
             if (message.procRunning.port) {
                 setProxy(message.procRunning.port);
             } else if (message.procRunning.errror) {
-                console.log("procRunning error from backend: " + message.init.err);
+                console.log("procRunning error from backend: " + message.procRunning.err);
                 disableProxy();
             }
         }
+        if (message.init && message.init.error) {
+            console.log("init error from backend: " + message.init.err);
+            disableProxy();
+        }
+        if (message.status) {
+            lastStatus = message.status;
+        }
         maybeSendInit();
         sendPopupStatus();
-
-        // let st = message.status;
-        // if (st && st.running && st.proxyPort && proxyEnabled) {
-        //     setProxy(st.proxyPort);
-        // }
     })
 }
 
 var lastProxyPort = 0;
+var lastStatus = {}; // last Go status
 
 function setProxy(proxyPort) {
     if (proxyPort) {
+        proxyEnabled = true;
         lastProxyPort = proxyPort;
         console.log("Enabling proxy at port: " + proxyPort);
     } else {
+        proxyEnabled = false;
         console.log("Disabling proxy...");
         chrome.proxy.settings.set(
             {
@@ -220,7 +224,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (proxyEnabled) {
             enableProxy();
             console.log("bg: toggleProxy on, now proxy=" + proxyEnabled);
-            sendResponse({ status: "Connected" });
+            sendResponse({ status: lastStatus });
             console.log("bg: toggleProxy on, sent proxy=" + proxyEnabled);
         } else {
             disableProxy();

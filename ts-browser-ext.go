@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gorilla/csrf"
+	"tailscale.com/client/tailscale"
 	"tailscale.com/client/web"
 	"tailscale.com/hostinfo"
 	"tailscale.com/ipn"
@@ -31,6 +32,7 @@ import (
 	"tailscale.com/net/socks5"
 	"tailscale.com/tsnet"
 	"tailscale.com/types/logger"
+	"tailscale.com/types/netmap"
 )
 
 var (
@@ -187,11 +189,16 @@ type host struct {
 
 	lenBuf [4]byte // owned by readMessages
 
-	mu     sync.Mutex
-	ts     *tsnet.Server
-	ws     *web.Server
-	ln     net.Listener
-	wantUp bool
+	mu         sync.Mutex
+	watchDead  bool
+	lastNetmap *netmap.NetworkMap
+	lastState  ipn.State
+	ctx        context.Context // for IPN bus; canceled by cancelCtx
+	cancelCtx  context.CancelFunc
+	ts         *tsnet.Server
+	ws         *web.Server
+	ln         net.Listener
+	wantUp     bool
 	// ...
 }
 
@@ -290,6 +297,11 @@ func (h *host) handleInit(msg *request) (ret error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	if h.cancelCtx != nil {
+		h.cancelCtx()
+	}
+	h.ctx, h.cancelCtx = context.WithCancel(context.Background())
+
 	id := msg.InitID
 	if len(id) == 0 {
 		return fmt.Errorf("missing initID")
@@ -331,6 +343,12 @@ func (h *host) handleInit(msg *request) (ret error) {
 		return fmt.Errorf("getting local client: %w", err)
 	}
 
+	wc, err := lc.WatchIPNBus(h.ctx, ipn.NotifyInitialState|ipn.NotifyRateLimit)
+	if err != nil {
+		return fmt.Errorf("watching IPN bus: %w", err)
+	}
+	go h.watchIPNBus(wc)
+
 	h.ws, err = web.NewServer(web.ServerOpts{
 		Mode:        web.LoginServerMode, // TODO: manage?
 		LocalClient: lc,
@@ -340,6 +358,43 @@ func (h *host) handleInit(msg *request) (ret error) {
 	}
 
 	return nil
+}
+
+func (h *host) watchIPNBus(wc *tailscale.IPNBusWatcher) {
+	h.mu.Lock()
+	h.watchDead = false
+	h.mu.Unlock()
+
+	for h.updateFromWatcher(wc) {
+		// Keep going.
+	}
+}
+
+func (h *host) updateFromWatcher(wc *tailscale.IPNBusWatcher) bool {
+	n, err := wc.Next()
+
+	defer h.sendStatus()
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if err != nil {
+		log.Printf("watchIPNBus: %v", err)
+		h.watchDead = true
+		return false
+	}
+
+	if n.NetMap != nil {
+		h.lastNetmap = n.NetMap
+	}
+	if n.State != nil {
+		h.lastState = *n.State
+	}
+
+	if n.BrowseToURL != nil {
+		// TODO: pop a browser for Tailscale SSH check mode etc?
+	}
+	return true
 }
 
 func (h *host) send(msg *reply) error {
@@ -408,15 +463,21 @@ func (h *host) userDial(ctx context.Context, netw, addr string) (net.Conn, error
 }
 
 func (h *host) sendStatus() {
+	st := &status{}
 	h.mu.Lock()
-	wantUp := h.wantUp
+	st.Running = h.lastState == ipn.Running
+	if nm := h.lastNetmap; nm != nil {
+		st.Tailnet = nm.Domain
+	}
+	if !st.Running {
+		st.Error = "State: " + h.lastState.String()
+	}
+	if h.watchDead {
+		st.Error = "WatchIPNBus stopped"
+	}
 	h.mu.Unlock()
 
-	if err := h.send(&reply{
-		Status: &status{
-			Running: wantUp,
-		},
-	}); err != nil {
+	if err := h.send(&reply{Status: st}); err != nil {
 		h.logf("failed to send status: %v", err)
 	}
 }
@@ -448,10 +509,15 @@ type request struct {
 
 // reply is a message to the browser extension.
 type reply struct {
-	// ProcRunning is set on the first
+	// ProcRunning is set on the first message when the Go process starts up.
+	// It's the message that makes the browser recognize that the native
+	// messaging port is up.
 	ProcRunning *procRunningResult `json:"procRunning,omitempty"`
-	Status      *status            `json:"status,omitempty"`
-	Init        *initResult        `json:"init,omitempty"`
+
+	// Status is sent in response to a [CmdGetStatus] [request.Cmd].
+	Status *status `json:"status,omitempty"`
+
+	Init *initResult `json:"init,omitempty"`
 }
 
 type procRunningResult struct {
@@ -465,7 +531,9 @@ type initResult struct {
 }
 
 type status struct {
-	Running bool `json:"running"`
+	Running bool   `json:"running"`
+	Tailnet string `json:"tailnet"`
+	Error   string `json:"error,omitempty"`
 }
 
 func (h *host) readMessage() (*request, error) {
