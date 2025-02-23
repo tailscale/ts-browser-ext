@@ -219,16 +219,17 @@ type host struct {
 
 	lenBuf [4]byte // owned by readMessages
 
-	mu         sync.Mutex
-	watchDead  bool
-	lastNetmap *netmap.NetworkMap
-	lastState  ipn.State
-	ctx        context.Context // for IPN bus; canceled by cancelCtx
-	cancelCtx  context.CancelFunc
-	ts         *tsnet.Server
-	ws         *web.Server
-	ln         net.Listener
-	wantUp     bool
+	mu              sync.Mutex
+	watchDead       bool
+	lastNetmap      *netmap.NetworkMap
+	lastState       ipn.State
+	lastBrowseToURL string
+	ctx             context.Context // for IPN bus; canceled by cancelCtx
+	cancelCtx       context.CancelFunc
+	ts              *tsnet.Server
+	ws              *web.Server
+	ln              net.Listener
+	wantUp          bool
 	// ...
 }
 
@@ -422,7 +423,9 @@ func (h *host) updateFromWatcher(wc *tailscale.IPNBusWatcher) bool {
 	}
 
 	if n.BrowseToURL != nil {
-		// TODO: pop a browser for Tailscale SSH check mode etc?
+		h.lastBrowseToURL = *n.BrowseToURL
+		// TODO: pop a browser for Tailscale SSH check mode etc, even
+		// if already logged in.
 	}
 	return true
 }
@@ -499,7 +502,10 @@ func (h *host) sendStatus() {
 	if nm := h.lastNetmap; nm != nil {
 		st.Tailnet = nm.Domain
 	}
-	if !st.Running {
+	if h.lastState == ipn.NeedsLogin {
+		st.NeedsLogin = true
+		st.BrowseToURL = h.lastBrowseToURL
+	} else if !st.Running {
 		st.Error = "State: " + h.lastState.String()
 	}
 	if h.watchDead {
@@ -564,6 +570,9 @@ type status struct {
 	Running bool   `json:"running"`
 	Tailnet string `json:"tailnet"`
 	Error   string `json:"error,omitempty"`
+
+	NeedsLogin  bool   `json:"needsLogin,omitempty"` // true if the user needs to log in
+	BrowseToURL string `json:"browseToURL"`
 }
 
 func (h *host) readMessage() (*request, error) {

@@ -1,5 +1,11 @@
 var lastStatus;
 
+function browseToURL() {
+    if (lastStatus && lastStatus.browseToURL) {
+        chrome.tabs.create({ url: lastStatus.browseToURL });
+    }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     let btn = document.getElementById("button");
     let st = document.getElementById("state");
@@ -26,6 +32,16 @@ document.addEventListener("DOMContentLoaded", () => {
             if (sm.error) {
                 console.log("Status error:", sm.error);
                 st.innerText = sm.error;
+                btn.hidden = true;
+                return;
+            }
+            if (sm.needsLogin) {
+                if (sm.browseToURL) {
+                    st.innerHTML = "<b><a href='#login'>Log in</a>.</b>";
+                    st.querySelector('a').onclick = browseToURL;
+                } else {
+                    st.innerHTML = "<b>Login required; no URL</b>";
+                }
                 btn.hidden = true;
                 return;
             }
