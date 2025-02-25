@@ -77,7 +77,7 @@ function sendPopupStatus() {
     if (deadPort) {
         setPopupIcon("need-install")
         console.log("sendPopupStatus... no nmPort");
-        sendToPopup({installCmd: "go run github.com/bradfitz/ts-browser-ext@main --install=" + browserByte() + chrome.runtime.id})
+        sendToPopup({installCmd: "go run github.com/tailscale/ts-browser-ext@main --install=" + browserByte() + chrome.runtime.id})
         return;
     }
     setPopupIcon("online"); // TODO: be offline/online/etc
