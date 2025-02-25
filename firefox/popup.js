@@ -1,5 +1,11 @@
 var lastStatus;
 
+function browseToURL() {
+    if (lastStatus && lastStatus.browseToURL) {
+        chrome.tabs.create({ url: lastStatus.browseToURL });
+    }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     let btn = document.getElementById("button");
     let st = document.getElementById("state");
@@ -29,6 +35,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 btn.hidden = true;
                 return;
             }
+            if (sm.needsLogin) {
+                if (sm.browseToURL) {
+                    st.innerHTML = "<b><a href='#login'>Log in</a>.</b>";
+                    st.querySelector('a').onclick = browseToURL;
+                } else {
+                    st.innerHTML = "<b>Login required; no URL</b>";
+                }
+                btn.hidden = true;
+                return;
+            }
             st.innerText = (sm.running ? "🟢" : "🔴") + " " + sm.tailnet;
             btn.hidden = false;
             btn.innerText = "Settings";
@@ -42,7 +58,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     btn.addEventListener("click", () => {
         if (btn.innerText == "Settings") { // trashy :)
-            // Open tab to a URL ...
             chrome.tabs.create({ url: "http://100.100.100.100" });
             return
         }

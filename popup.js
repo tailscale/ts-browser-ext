@@ -58,7 +58,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     btn.addEventListener("click", () => {
         if (btn.innerText == "Settings") { // trashy :)
-            // Open tab to a URL ...
             chrome.tabs.create({ url: "http://100.100.100.100" });
             return
         }
