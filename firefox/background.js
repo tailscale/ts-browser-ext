@@ -1,8 +1,7 @@
-// Flag to track proxy status
 let proxyEnabled = false;
 
-
-// Function to change the popup icon
+// setPopupIcon sets the icon. It takes either a boolean (for online/offline)
+// or the base name of the png file.
 function setPopupIcon(base) {
     if (typeof base === "boolean") {
         base = base ? "online" : "offline";
@@ -17,14 +16,12 @@ function setPopupIcon(base) {
     });
 }
 
-// Function to enable the proxy
 function enableProxy() {
     if (deadPort) {
         console.error("Cannot enable proxy, disconnected from native host");
         return;
     }
 
-    // Send message to port
     if (lastProxyPort) {
         nmPort.postMessage({ cmd: "get-status" });        
     } else {
@@ -48,7 +45,6 @@ chrome.runtime.onConnect.addListener((port) => {
 
     console.log("Popup connected");
     
-    // Handle messages from the popup if needed
     port.onMessage.addListener((msg) => {
         console.log("Message from popup:", msg);
     });
