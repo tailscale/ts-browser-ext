@@ -1,4 +1,4 @@
-module github.com/bradfitz/ts-browser-ext
+module github.com/tailscale/ts-browser-ext
 
 go 1.23.4
 
