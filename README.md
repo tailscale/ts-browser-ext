@@ -32,6 +32,10 @@ Internet as normal.
 
 ## Status
 
+As of 2025-02-25, this is **barely just starting to work** and is not
+meant for end users yet. It's barely meant for developers at this
+point.
+
 | Browser    | OS | Status |
 | -------- | ------- | ---- |
 | Chrome  | macOS | Works |
@@ -39,5 +43,25 @@ Internet as normal.
 | Chrome  | Windows | Registry install work not yet done |
 | Firefox  | * | not yet, but started |
 | Safari  | * | not possible; no support for Native Messaging |
+
+## Developer instructions
+
+* use Chrome (for now)
+* Extensions...
+* Manage Extensions...
+* [X] Developer Mode
+* Load Unpacked...
+* navigate to directory where you cloned this repo...
+* install
+* pin the extension
+* click it
+* follow instructions to `go install` the backend part
+* click again, "Log in"
+
+To log out, for now you need to remove & re-add the extension.
+
+## End user instructions
+
+Don't use it yet. It's too rough. See status above.
 
 
