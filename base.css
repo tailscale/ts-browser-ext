@@ -1,0 +1,188 @@
+/* Color variables */
+:root {
+  --color-white: 255 255 255;
+
+  --color-gray-0: 250 249 248;
+  --color-gray-50: 249 247 246;
+  --color-gray-100: 247 245 244;
+  --color-gray-200: 238 235 234;
+  --color-gray-300: 218 214 213;
+  --color-gray-400: 175 172 171;
+  --color-gray-500: 112 110 109;
+  --color-gray-600: 68 67 66;
+  --color-gray-700: 46 45 45;
+  --color-gray-800: 35 34 34;
+  --color-gray-900: 31 30 30;
+  --color-gray-1000: 24 23 23;
+  --color-gray-1100: 17 16 16;
+
+  --color-red-0: 255 246 244;
+  --color-red-50: 255 211 207;
+  --color-red-100: 255 177 171;
+  --color-red-200: 246 143 135;
+  --color-red-300: 228 108 99;
+  --color-red-400: 208 72 65;
+  --color-red-500: 178 45 48;
+  --color-red-600: 148 8 33;
+  --color-red-700: 118 0 18;
+  --color-red-800: 90 0 0;
+  --color-red-900: 66 0 0;
+
+  --color-yellow-0: 252 249 233;
+  --color-yellow-50: 248 229 185;
+  --color-yellow-100: 239 192 120;
+  --color-yellow-200: 229 153 62;
+  --color-yellow-300: 217 121 23;
+  --color-yellow-400: 187 85 4;
+  --color-yellow-500: 152 55 5;
+  --color-yellow-600: 118 43 11;
+  --color-yellow-700: 87 31 13;
+  --color-yellow-800: 58 22 7;
+  --color-yellow-900: 58 22 7;
+
+  --color-orange-0: 255 250 238;
+  --color-orange-50: 254 227 192;
+  --color-orange-100: 248 184 134;
+  --color-orange-200: 245 146 94;
+  --color-orange-300: 229 111 74;
+  --color-orange-400: 196 76 52;
+  --color-orange-500: 158 47 40;
+  --color-orange-600: 126 30 35;
+  --color-orange-700: 93 22 27;
+  --color-orange-800: 66 14 17;
+  --color-orange-900: 66 14 17;
+
+  --color-green-0: 239 255 237;
+  --color-green-50: 203 244 201;
+  --color-green-100: 133 217 150;
+  --color-green-200: 51 194 127;
+  --color-green-300: 30 166 114;
+  --color-green-400: 9 130 93;
+  --color-green-500: 14 98 69;
+  --color-green-600: 13 75 59;
+  --color-green-700: 11 55 51;
+  --color-green-800: 8 36 41;
+  --color-green-900: 8 36 41;
+
+  --color-blue-0: 240 245 255;
+  --color-blue-50: 206 222 253;
+  --color-blue-100: 173 199 252;
+  --color-blue-200: 133 170 245;
+  --color-blue-300: 108 148 236;
+  --color-blue-400: 90 130 222;
+  --color-blue-500: 75 112 204;
+  --color-blue-600: 63 93 179;
+  --color-blue-700: 50 73 148;
+  --color-blue-800: 37 53 112;
+  --color-blue-900: 25 34 74;
+}
+
+/* CSS Reset based on Josh Comeau's */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+body {
+  line-height: 1.3;
+  -webkit-font-smoothing: antialiased;
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+p {
+  text-wrap: pretty;
+}
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: balance;
+  font-weight: 500;
+}
+
+/* Styles */
+body {
+  background: white;
+  padding: 16px;
+  min-width: 160px;
+  font-size: 0.875rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+    sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  color: var(--color-gray-800);
+}
+
+button {
+  border-radius: 4px;
+  background-color: rgb(var(--color-gray-0));
+  border: 1px solid rgb(var(--color-gray-300));
+  padding: 0.35rem 0.75rem;
+  margin-top: 8px;
+}
+
+button:hover {
+  cursor: pointer;
+  background-color: rgb(var(--color-gray-100));
+}
+
+h1 {
+  font-size: 1.125rem;
+}
+
+h3 {
+  font-size: 1rem;
+}
+
+#state {
+  margin-top: 2px;
+  color: rgb(var(--color-gray-500));
+  display: flex;
+  align-items: center;
+}
+
+.statusdot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 8px;
+}
+
+.statusdot.on {
+  background-color: rgb(var(--color-green-300));
+}
+
+.statusdot.off {
+  background-color: rgb(var(--color-gray-200));
+}
