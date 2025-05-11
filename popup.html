@@ -1,18 +1,330 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>Proxy Toggle</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
     <script src="popup.js"></script>
     <style>
-        #state {
-            white-space: nowrap;
-        }
+      body {
+        background-color: #faf7f6;
+        color: #575655;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        margin: 0;
+        padding: 16px;
+        width: 300px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .logo {
+        width: 120px;
+      }
+
+      /* Slider styles */
+      .slider-container {
+        position: relative;
+        width: 44px;
+        height: 24px;
+      }
+
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: 0.4s;
+        border-radius: 24px;
+      }
+
+      .slider.no-transition {
+        transition: none;
+      }
+
+      .slider.loading {
+        filter: grayscale(100%);
+        opacity: 0.7;
+        cursor: wait;
+      }
+
+      .slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 2px;
+        bottom: 2px;
+        background-color: #fcfcfc;
+        transition: 0.4s;
+        border-radius: 50%;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      .slider.connected {
+        background-color: #4c78c6;
+      }
+
+      .slider.connected:before {
+        transform: translateX(20px);
+      }
+
+      #state {
+        white-space: nowrap;
+        margin-bottom: 16px;
+        font-size: 14px;
+      }
+
+      button {
+        background-color: #2e2d2d;
+        color: #fff;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+
+      button:hover {
+        background-color: #1f1e1e;
+      }
+
+      .settings-button {
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      .status {
+        padding: 8px;
+        border-radius: 4px;
+        background-color: #f5f5f5;
+        margin-bottom: 16px;
+      }
     </style>
-</head>
-<body>
-    <h1>Tailscale</h1>
-    <div id='state'></div>
-    <button id="button">Button</button>
-</body>
+  </head>
+  <body>
+    <div class="header">
+      <div class="logo">
+        <svg
+          class="transition-colors duration-200"
+          width="100%"
+          height="100%"
+          viewBox="0 0 110 20"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <ellipse
+            cx="2.44719"
+            cy="10.1796"
+            rx="2.44719"
+            ry="2.44128"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></ellipse>
+          <ellipse
+            cx="9.79094"
+            cy="10.1796"
+            rx="2.44719"
+            ry="2.44128"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></ellipse>
+          <ellipse
+            opacity="0.2"
+            cx="2.44719"
+            cy="17.5077"
+            rx="2.44719"
+            ry="2.44128"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></ellipse>
+          <ellipse
+            opacity="0.2"
+            cx="17.1269"
+            cy="17.5077"
+            rx="2.44719"
+            ry="2.44128"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></ellipse>
+          <ellipse
+            cx="9.79094"
+            cy="17.5077"
+            rx="2.44719"
+            ry="2.44128"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></ellipse>
+          <ellipse
+            cx="17.1269"
+            cy="10.1796"
+            rx="2.44719"
+            ry="2.44128"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></ellipse>
+          <ellipse
+            opacity="0.2"
+            cx="2.44719"
+            cy="2.85924"
+            rx="2.44719"
+            ry="2.44128"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></ellipse>
+          <ellipse
+            opacity="0.2"
+            cx="9.79094"
+            cy="2.85924"
+            rx="2.44719"
+            ry="2.44128"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></ellipse>
+          <ellipse
+            opacity="0.2"
+            cx="17.1269"
+            cy="2.85924"
+            rx="2.44719"
+            ry="2.44128"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></ellipse>
+          <path
+            d="M34.3979 18.458C35.0907 18.458 35.6536 18.3933 36.3248 18.2637V15.7584C35.9134 15.9096 35.4588 15.9528 35.0258 15.9528C33.965 15.9528 33.5753 15.4344 33.5753 14.441V9.34402H36.3248V6.83875H33.5753V3.12403H30.5443V6.83875H28.5742V9.34402H30.5443V14.7217C30.5443 17.0974 31.8 18.458 34.3979 18.458Z"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></path>
+          <path
+            d="M41.2747 18.458C42.8984 18.458 43.9809 17.9181 44.5222 17.0758C44.5655 17.443 44.6954 17.9397 44.8686 18.2421H47.5964C47.4449 17.7237 47.3366 16.903 47.3366 16.3631V10.4455C47.3366 8.005 45.583 6.62277 42.617 6.62277C40.3654 6.62277 38.6118 7.46507 37.6376 8.69611L39.3696 10.4023C40.149 9.5384 41.1448 9.08486 42.3572 9.08486C43.8294 9.08486 44.4789 9.58159 44.4789 10.3159C44.4789 10.9422 44.0459 11.3742 41.7077 11.3742C39.4562 11.3742 37.183 12.3028 37.183 14.8945C37.183 17.2918 38.9149 18.458 41.2747 18.458ZM41.8809 16.1687C40.7118 16.1687 40.1706 15.672 40.1706 14.7865C40.1706 14.009 40.8201 13.4907 41.9026 13.4907C43.6345 13.4907 44.1108 13.3827 44.4789 13.0155V13.9442C44.4789 15.1753 43.4397 16.1687 41.8809 16.1687Z"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></path>
+          <path
+            d="M49.3069 5.39173H52.4677V2.5625H49.3069V5.39173ZM49.3718 18.2421H52.4028V6.83875H49.3718V18.2421Z"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></path>
+          <path
+            d="M54.6109 18.2421H57.6418V2.90805H54.6109V18.2421Z"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></path>
+          <path
+            d="M63.9416 18.458C67.2757 18.458 68.986 16.7087 68.986 14.8729C68.986 13.2099 68.1417 11.9789 65.3705 11.4821C63.4221 11.1366 62.2097 10.7046 62.2097 10.0351C62.2097 9.45201 62.9025 9.04166 64.0715 9.04166C65.1107 9.04166 65.9767 9.38722 66.6262 10.1431L68.553 8.52333C67.5788 7.31389 65.9767 6.62277 64.0715 6.62277C61.1489 6.62277 59.3303 8.17777 59.3303 10.0783C59.3303 12.1517 61.2354 13.0803 63.2922 13.4475C65.0025 13.7499 65.9551 14.0738 65.9551 14.8081C65.9551 15.4344 65.2839 15.9528 64.0066 15.9528C62.7509 15.9528 61.7767 15.3696 61.322 14.5058L58.7674 15.7152C59.3952 17.2702 61.5385 18.458 63.9416 18.458Z"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></path>
+          <path
+            d="M75.7621 18.458C77.9271 18.458 79.4859 17.5942 80.6549 15.6504L78.2302 14.4194C77.7755 15.3265 77.0395 15.9528 75.7621 15.9528C73.8353 15.9528 72.7961 14.3978 72.7961 12.5188C72.7961 10.6399 73.9003 9.12805 75.7621 9.12805C76.9312 9.12805 77.7106 9.75437 78.1652 10.7046L80.6116 9.40882C79.7889 7.61625 78.1652 6.62277 75.7621 6.62277C71.8003 6.62277 69.7652 9.5168 69.7652 12.5188C69.7652 15.78 72.2333 18.458 75.7621 18.458Z"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></path>
+          <path
+            d="M85.4829 18.458C87.1067 18.458 88.1891 17.9181 88.7304 17.0758C88.7737 17.443 88.9036 17.9397 89.0768 18.2421H91.8046C91.6531 17.7237 91.5448 16.903 91.5448 16.3631V10.4455C91.5448 8.005 89.7912 6.62277 86.8252 6.62277C84.5737 6.62277 82.8201 7.46507 81.8458 8.69611L83.5778 10.4023C84.3572 9.5384 85.353 9.08486 86.5654 9.08486C88.0376 9.08486 88.6871 9.58159 88.6871 10.3159C88.6871 10.9422 88.2541 11.3742 85.9159 11.3742C83.6644 11.3742 81.3912 12.3028 81.3912 14.8945C81.3912 17.2918 83.1231 18.458 85.4829 18.458ZM86.0891 16.1687C84.9201 16.1687 84.3788 15.672 84.3788 14.7865C84.3788 14.009 85.0283 13.4907 86.1108 13.4907C87.8427 13.4907 88.319 13.3827 88.6871 13.0155V13.9442C88.6871 15.1753 87.6479 16.1687 86.0891 16.1687Z"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></path>
+          <path
+            d="M93.3263 18.2421H96.3573V2.90805H93.3263V18.2421Z"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></path>
+          <path
+            d="M103.631 18.458C105.861 18.458 107.658 17.5726 108.654 15.996L106.359 14.5274C105.753 15.4776 104.952 15.996 103.631 15.996C102.138 15.996 101.055 15.1753 100.774 13.5771H109.39V12.5188C109.39 9.5168 107.55 6.62277 103.61 6.62277C99.8643 6.62277 97.8293 9.5384 97.8293 12.5404C97.8293 16.8167 101.055 18.458 103.631 18.458ZM100.882 11.2014C101.358 9.75437 102.354 9.08486 103.675 9.08486C105.168 9.08486 106.078 9.97034 106.381 11.2014H100.882Z"
+            fill="#1F1E1E"
+            data-darkreader-inline-fill=""
+            style="
+              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
+            "
+          ></path>
+        </svg>
+      </div>
+      <label class="slider-container">
+        <input
+          type="checkbox"
+          id="toggleSlider"
+          class="slider-input"
+          style="display: none"
+          checked
+        />
+        <span class="slider connected no-transition"></span>
+      </label>
+    </div>
+    <div id="state" class="status"></div>
+    <div class="controls">
+      <button id="settingsButton" class="settings-button">Settings</button>
+    </div>
+  </body>
 </html>
