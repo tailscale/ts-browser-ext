@@ -146,15 +146,15 @@ func install(installArg string) error {
 	browserByte, extension := installArg[0:1], installArg[1:]
 	switch browserByte {
 	case "C":
+		extensionRE := regexp.MustCompile(`^[a-z0-9]{32}$`)
+		if !extensionRE.MatchString(extension) {
+			return fmt.Errorf("invalid extension ID %q", extension)
+		}
 	case "F":
-		return errors.New("TODO: firefox")
 	default:
 		return fmt.Errorf("unknown browser prefix byte %q", browserByte)
 	}
-	extensionRE := regexp.MustCompile(`^[a-z0-9]{32}$`)
-	if !extensionRE.MatchString(extension) {
-		return fmt.Errorf("invalid extension ID %q", extension)
-	}
+
 	exe, err := os.Executable()
 	if err != nil {
 		return err

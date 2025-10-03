@@ -84,6 +84,15 @@ function browserByte() {
 }
 
 function sendPopupStatus() {
+  // firefox requires that extensions settings proxies have private browsing access
+  browser.extension.isAllowedIncognitoAccess().then(isAllowed => {
+    if (!isAllowed) {
+          sendToPopup({
+        needsIncognitoPermission: true
+      });
+    }
+  });
+
   if (deadPort) {
     setPopupIcon("need-install");
     console.log("sendPopupStatus... no nmPort");
@@ -186,15 +195,9 @@ function setProxy(proxyPort) {
   browser.proxy.settings
     .set({
       value: {
-        mode: "fixed_servers",
-        rules: {
-          singleProxy: {
-            scheme: "http",
-            host: "127.0.0.1",
-            port: proxyPort,
-          },
-          bypassList: ["<local>"],
-        },
+        proxyType: "manual",
+        http: "127.0.0.1:" + proxyPort,
+        bypassList: ["<local>"],
       },
       scope: "regular",
     })
