@@ -1,11 +1,5 @@
 var lastStatus;
 
-function browseToURL() {
-  if (lastStatus && lastStatus.browseToURL) {
-    browser.tabs.create({ url: lastStatus.browseToURL });
-  }
-}
-
 document.addEventListener("DOMContentLoaded", () => {
   const toggleSlider = document.getElementById("toggleSlider");
   const slider = document.querySelector(".slider");
@@ -46,7 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (status.needsLogin) {
       stateDisplay.innerHTML = status.browseToURL
-        ? `<b><a href='#login'>Log in</a></b>`
+        ? `<b><a href='${status.browseToURL}'>Log in</a></b>`
         : "<b>Login required; no URL</b>";
       return;
     }
@@ -67,6 +61,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   port.onMessage.addListener((msg) => {
     console.log("Received from background:", JSON.stringify(msg));
+
+    // firefox requires that extensions settings proxies have private browsing access
+    if (msg.needsIncognitoPermission) {
+      console.log("Private browsing permission needed")
+      stateDisplay.innerHTML = `<b><a href="https://support.mozilla.org/en-US/kb/extensions-private-browsing#w_enabling-or-disabling-extensions-in-private-windows">Enable private browsing access.</a></b>`
+      return;
+    }
+
     if (msg.installCmd) {
       console.log("Received install command");
       stateDisplay.innerHTML = `<b>Installation needed. Run:</b><pre>${msg.installCmd}</pre>`;

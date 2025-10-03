@@ -41,7 +41,9 @@ point.
 | Chrome  | macOS | Works |
 | Chrome  | Linux | Works in theory, untested |
 | Chrome  | Windows | Registry install work not yet done |
-| Firefox  | * | not yet, but started |
+| Firefox  | macOS | Mostly works |
+| Firefox  | Linux | Mostly works in theory, untested |
+| Firefox  | Windows | Registry install work not yet done |
 | Safari  | * | not possible; no support for Native Messaging |
 
 ## Developer instructions
