@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Exit Node Domain Settings</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+    <script src="domain_settings.js"></script>
+    <style>
+      body {
+        font-family: "Inter", Arial, sans-serif;
+        background: #f5f7fa;
+        margin: 0;
+        padding: 24px;
+        color: #575655;
+        max-width: 420px;
+      }
+      .card {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        padding: 18px;
+        margin-bottom: 15px;
+      }
+      .section-title { font-weight: 500; margin-bottom: 10px; font-size: 18px; }
+      .domain-list { margin-bottom: 12px; }
+      .domain-item {
+        display: flex; align-items: center; justify-content: space-between;
+        background: #f8fafc; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px;
+      }
+      .domain-label { font-size: 15px; }
+      .remove-btn {
+        background: #e53e3e;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        padding: 2px 8px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .input-row {
+        display: flex; gap: 8px; margin-bottom: 12px;
+      }
+      .domain-input {
+        flex: 1;
+        padding: 7px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+        font-size: 15px;
+      }
+      .add-btn {
+        background: #4c78c6;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        padding: 7px 14px;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      .help-text {
+        font-size: 13px;
+        color: #636e7b;
+        margin-bottom: 10px;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { background: #23263a; color: #e2e8f0; }
+        .card { background: #2d3748; }
+        .domain-list, .domain-input { background: #23263a; color: #e2e8f0; }
+        .domain-item { background: #374151; }
+        .remove-btn { background: #e53e3e; color: #e2e8f0; }
+        .add-btn { background: #3755b4; color: #e2e8f0; }
+        .help-text { color: #a0aec0; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="section-title">Domains Using Exit Node</div>
+      <div class="help-text">
+        List domains for which browser traffic should use the exit node.<br>
+        Supports wildcards: <b>*.example.com</b>, <b>*example.org</b>, <b>sub.domain.com</b>, <b>*</b>.<br>
+        Example: <b>*.bank.com</b> routes all bank.com subdomains via exit node.
+      </div>
+      <form id="domainForm" class="input-row">
+        <input type="text" id="domainInput" class="domain-input" placeholder="e.g. *.example.com"/>
+        <button type="submit" class="add-btn">Add</button>
+      </form>
+      <div id="domainList" class="domain-list"></div>
+    </div>
+  </body>
+</html>

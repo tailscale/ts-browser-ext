@@ -2,274 +2,123 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Proxy Toggle</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <title>Tailscale Browser Extension</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet" />
     <script src="popup.js"></script>
     <style>
       body {
-        background-color: #faf7f6;
-        color: #575655;
-        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
-          Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        font-family: "Inter", Arial, sans-serif;
+        background: #f5f7fa;
         margin: 0;
         padding: 16px;
-        width: 300px;
+        width: 330px;
+        color: #575655;
       }
-
-      .header {
+      .card {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        padding: 18px;
+        margin-bottom: 15px;
+      }
+      .status-row {
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        margin-bottom: 16px;
+        gap: 10px;
+        margin-bottom: 12px;
       }
-
-      .logo {
-        width: 120px;
-      }
-
-      /* Slider styles */
-      .slider-container {
-        position: relative;
-        width: 44px;
-        height: 24px;
-      }
-
-      .slider {
-        position: absolute;
-        cursor: pointer;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: #ccc;
-        transition: 0.4s;
-        border-radius: 24px;
-      }
-
-      .slider.no-transition {
-        transition: none;
-      }
-
-      .slider.loading {
-        filter: grayscale(100%);
-        opacity: 0.7;
-        cursor: wait;
-      }
-
-      .slider:before {
-        position: absolute;
-        content: "";
-        height: 20px;
-        width: 20px;
-        left: 2px;
-        bottom: 2px;
-        background-color: #fcfcfc;
-        transition: 0.4s;
+      .status-dot {
+        width: 12px;
+        height: 12px;
         border-radius: 50%;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        background: #e53e3e;
+        margin-right: 8px;
       }
-
-      .slider.connected {
-        background-color: #4c78c6;
+      .status-dot.connected { background: #38a169; }
+      .status-dot.loading { background: #d69e2e; animation: pulse 1s infinite; }
+      @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.6; }
+        100% { opacity: 1; }
       }
-
-      .slider.connected:before {
-        transform: translateX(20px);
+      .section-title { font-weight: 500; margin-bottom: 8px; font-size: 16px; }
+      .dropdown {
+        width: 100%; padding: 6px; border-radius: 6px; border: 1px solid #ccc;
+        background: #f8fafc; font-size: 14px;
       }
-
-      #state {
-        white-space: nowrap;
-        margin-bottom: 16px;
-        font-size: 14px;
+      .button-row { display: flex; gap: 8px; margin-top: 8px; }
+      .btn {
+        background: #4c78c6; color: #fff; border: none; border-radius: 6px; padding: 8px 16px;
+        font-size: 14px; cursor: pointer; transition: background 0.15s;
       }
+      .btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+      .alert { background: #ffe5e5; color: #c53030; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; }
+      .desc { font-size: 13px; color: #636e7b; margin-top: 3px; }
+      .exitnode-desc { font-size: 12px; color: #4c78c6; margin-top: 5px; }
+      .hidden { display: none; }
+      a { color: #4c78c6; text-decoration: none; }
+      a:hover { text-decoration: underline; }
 
-      button {
-        background-color: #2e2d2d;
-        color: #fff;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 6px;
-        font-size: 14px;
-        cursor: pointer;
-        transition: background-color 0.2s;
-      }
-
-      button:hover {
-        background-color: #1f1e1e;
-      }
-
-      .settings-button {
-        padding: 6px 12px;
-        font-size: 12px;
-      }
-
-      .controls {
-        display: flex;
-        gap: 8px;
-        margin-top: 16px;
-      }
-
-      .status {
-        padding: 8px;
-        border-radius: 4px;
-        background-color: #f5f5f5;
-        margin-bottom: 16px;
+      /* DARK MODE SUPPORT */
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #171923;
+          color: #e2e8f0;
+        }
+        .card {
+          background: #23263a;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+        .dropdown {
+          background: #23263a;
+          color: #e2e8f0;
+          border: 1px solid #374151;
+        }
+        .btn {
+          background: #3755b4;
+          color: #e2e8f0;
+        }
+        .btn:disabled {
+          background: #374151;
+          color: #a0aec0;
+        }
+        .alert {
+          background: #2d3748;
+          color: #e53e3e;
+        }
+        .desc, .exitnode-desc {
+          color: #a0aec0;
+        }
+        a, a:hover {
+          color: #90cdf4;
+        }
+        .status-dot {
+          background: #e53e3e;
+        }
+        .status-dot.connected { background: #48bb78; }
+        .status-dot.loading { background: #d69e2e; }
       }
     </style>
   </head>
   <body>
-    <div class="header">
-      <div class="logo">
-        <svg
-          class="transition-colors duration-200"
-          width="100%"
-          height="100%"
-          viewBox="0 0 110 20"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <ellipse
-            cx="2.44719"
-            cy="10.1796"
-            rx="2.44719"
-            ry="2.44128"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></ellipse>
-          <ellipse
-            cx="9.79094"
-            cy="10.1796"
-            rx="2.44719"
-            ry="2.44128"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></ellipse>
-          <ellipse
-            opacity="0.2"
-            cx="2.44719"
-            cy="17.5077"
-            rx="2.44719"
-            ry="2.44128"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></ellipse>
-          <ellipse
-            opacity="0.2"
-            cx="17.1269"
-            cy="17.5077"
-            rx="2.44719"
-            ry="2.44128"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></ellipse>
-          <ellipse
-            cx="9.79094"
-            cy="17.5077"
-            rx="2.44719"
-            ry="2.44128"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></ellipse>
-          <ellipse
-            cx="17.1269"
-            cy="10.1796"
-            rx="2.44719"
-            ry="2.44128"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></ellipse>
-          <ellipse
-            opacity="0.2"
-            cx="2.44719"
-            cy="2.85924"
-            rx="2.44719"
-            ry="2.44128"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></ellipse>
-          <ellipse
-            opacity="0.2"
-            cx="9.79094"
-            cy="2.85924"
-            rx="2.44719"
-            ry="2.44128"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></ellipse>
-          <ellipse
-            opacity="0.2"
-            cx="17.1269"
-            cy="2.85924"
-            rx="2.44719"
-            ry="2.44128"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></ellipse>
-          <path
-            d="M34.3979 18.458C35.0907 18.458 35.6536 18.3933 36.3248 18.2637V15.7584C35.9134 15.9096 35.4588 15.9528 35.0258 15.9528C33.965 15.9528 33.5753 15.4344 33.5753 14.441V9.34402H36.3248V6.83875H33.5753V3.12403H30.5443V6.83875H28.5742V9.34402H30.5443V14.7217C30.5443 17.0974 31.8 18.458 34.3979 18.458Z"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></path>
-          <path
-            d="M41.2747 18.458C42.8984 18.458 43.9809 17.9181 44.5222 17.0758C44.5655 17.443 44.6954 17.9397 44.8686 18.2421H47.5964C47.4449 17.7237 47.3366 16.903 47.3366 16.3631V10.4455C47.3366 8.005 45.583 6.62277 42.617 6.62277C40.3654 6.62277 38.6118 7.46507 37.6376 8.69611L39.3696 10.4023C40.149 9.5384 41.1448 9.08486 42.3572 9.08486C43.8294 9.08486 44.4789 9.58159 44.4789 10.3159C44.4789 10.9422 44.0459 11.3742 41.7077 11.3742C39.4562 11.3742 37.183 12.3028 37.183 14.8945C37.183 17.2918 38.9149 18.458 41.2747 18.458ZM41.8809 16.1687C40.7118 16.1687 40.1706 15.672 40.1706 14.7865C40.1706 14.009 40.8201 13.4907 41.9026 13.4907C43.6345 13.4907 44.1108 13.3827 44.4789 13.0155V13.9442C44.4789 15.1753 43.4397 16.1687 41.8809 16.1687Z"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></path>
-          <path
-            d="M49.3069 5.39173H52.4677V2.5625H49.3069V5.39173ZM49.3718 18.2421H52.4028V6.83875H49.3718V18.2421Z"
-            fill="#1F1E1E"
-            data-darkreader-inline-fill=""
-            style="
-              --darkreader-inline-fill: var(--darkreader-text-1f1e1e, #d5d1cc);
-            "
-          ></path>
-        </svg>
+    <div id="alertBox" class="alert hidden"></div>
+    <div class="card">
+      <div class="section-title">Connection</div>
+      <div class="status-row">
+        <span id="statusDot" class="status-dot"></span>
+        <span id="stateText">Loading...</span>
       </div>
-      <div class="slider-container">
-        <input type="checkbox" id="toggleSlider" class="slider" checked />
+      <div id="tailnetInfo" class="desc"></div>
+      <div class="button-row">
+        <button id="toggleBtn" class="btn">Connect</button>
+        <button id="settingsBtn" class="btn">Settings</button>
+        <button id="domainSettingsBtn" class="btn" title="Configure domains for exit node">Domains</button>
       </div>
     </div>
-    <div id="state">Disconnected</div>
-    <div class="controls">
-      <button id="settingsButton" class="settings-button">Settings</button>
+    <div id="exitNodeCard" class="card hidden">
+      <div class="section-title">Exit Node</div>
+      <select id="exitNodeDropdown" class="dropdown"></select>
+      <div id="exitNodeDesc" class="exitnode-desc hidden"></div>
     </div>
   </body>
 </html>

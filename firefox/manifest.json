@@ -9,19 +9,16 @@
           "strict_min_version": "50.0"
         }
       },
-     "permissions": [
+    "permissions": [
         "proxy",
-        "background",
         "storage",
-        "nativeMessaging"
-    ],
-    "host_permissions": [
+        "nativeMessaging",
         "<all_urls>"
     ],
     "background": {
         "scripts": ["background.js"]
     },
-    "action": {
+    "browser_action": {
         "default_popup": "popup.html",
         "default_icon": "icon.png"
     }
