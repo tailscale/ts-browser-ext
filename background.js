@@ -202,7 +202,7 @@ function setProxy(proxyPort) {
             host: "127.0.0.1",
             port: proxyPort,
           },
-          bypassList: ["<local>"],
+          bypassList: ["localhost", "127.*"],
         },
       },
       scope: "regular",
