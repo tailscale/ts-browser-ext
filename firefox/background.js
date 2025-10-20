@@ -173,6 +173,7 @@ var lastProxyPort = 0;
 var lastStatus = {}; // last Go status
 
 function setProxy(proxyPort) {
+  const handleProxyRequest = proxyHandler(proxyPort)
   if (proxyPort) {
     proxyEnabled = true;
     lastProxyPort = proxyPort;
@@ -180,6 +181,7 @@ function setProxy(proxyPort) {
   } else {
     proxyEnabled = false;
     console.log("Disabling proxy...");
+    browser.proxy.onRequest.removeListener(handleProxyRequest)
     browser.proxy.settings
       .set({
         value: {
@@ -192,22 +194,26 @@ function setProxy(proxyPort) {
       });
     return;
   }
-  browser.proxy.settings
-    .set({
-      value: {
-        proxyType: "manual",
-        http: "127.0.0.1:" + proxyPort,
-        bypassList: ["<local>"],
-      },
-      scope: "regular",
-    })
-    .then(() => {
-      console.log("Proxy enabled: 127.0.0.1:" + proxyPort);
-    });
+  browser.proxy.onRequest.addListener(handleProxyRequest, { urls: ["<all_urls>"] })
 }
 
 var profileID = "";
 var didInit = false;
+
+// firefox has unique behaviour where only socks proxies can handle domain resolution
+function proxyHandler(port) {
+  return function handleProxyRequest(requestInfo) {
+    const url = new URL(requestInfo.url)
+
+    // we need to use http for 100.100.100.100
+    if (url.hostname == '100.100.100.100') {
+      return { type: "http", host: "127.0.0.1", port: port };
+    }
+
+    // use socks for everything else
+    return { type: "socks", host: "127.0.0.1", port: port, proxyDNS: true, bypassList: ["localhost", "127.*"] };
+  }
+}
 
 function maybeSendInit() {
   if (!profileID || didInit || deadPort) {
