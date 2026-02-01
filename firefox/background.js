@@ -87,7 +87,7 @@ function sendPopupStatus() {
   // firefox requires that extensions settings proxies have private browsing access
   browser.extension.isAllowedIncognitoAccess().then(isAllowed => {
     if (!isAllowed) {
-          sendToPopup({
+      sendToPopup({
         needsIncognitoPermission: true
       });
     }
@@ -96,11 +96,12 @@ function sendPopupStatus() {
   if (deadPort) {
     setPopupIcon("need-install");
     console.log("sendPopupStatus... no nmPort");
+    const suffix = browserByte() + browser.runtime.id;
     sendToPopup({
-      installCmd:
-        "go run github.com/tailscale/ts-browser-ext@main --install=" +
-        browserByte() +
-        browser.runtime.id,
+      installCmds: {
+        remote: "go run github.com/tailscale/ts-browser-ext@main --install=" + suffix,
+        local: "go run . --install=" + suffix,
+      },
     });
     return;
   }
@@ -119,6 +120,10 @@ let nmPort = null; // even non-null if lacking permission
 let deadPort = true;
 let portError = null;
 
+// Pending promise resolvers for exit node requests
+let pendingExitNodesResolve = null;
+let pendingSetExitNodeResolve = null;
+
 connectToNativeHost();
 
 function connectToNativeHost() {
@@ -131,6 +136,15 @@ function connectToNativeHost() {
   nmPort.onDisconnect.addListener(() => {
     deadPort = true;
     setPopupIcon("need-install");
+    // Clean up pending exit node resolvers to prevent hung promises
+    if (pendingExitNodesResolve) {
+      pendingExitNodesResolve({ error: "Disconnected from native host" });
+      pendingExitNodesResolve = null;
+    }
+    if (pendingSetExitNodeResolve) {
+      pendingSetExitNodeResolve({ error: "Disconnected from native host" });
+      pendingSetExitNodeResolve = null;
+    }
     disableProxy();
     const error = browser.runtime.lastError;
     if (error) {
@@ -164,6 +178,20 @@ function connectToNativeHost() {
     if (message.status) {
       lastStatus = message.status;
     }
+    if (message.exitNodes) {
+      console.log("got exitNodes response:", message.exitNodes);
+      if (pendingExitNodesResolve) {
+        pendingExitNodesResolve(message.exitNodes);
+        pendingExitNodesResolve = null;
+      }
+    }
+    if (message.exitNodeSet) {
+      console.log("got exitNodeSet response:", message.exitNodeSet);
+      if (pendingSetExitNodeResolve) {
+        pendingSetExitNodeResolve(message.exitNodeSet);
+        pendingSetExitNodeResolve = null;
+      }
+    }
     maybeSendInit();
     sendPopupStatus();
   });
@@ -171,17 +199,24 @@ function connectToNativeHost() {
 
 var lastProxyPort = 0;
 var lastStatus = {}; // last Go status
+var activeProxyHandler = null;
 
 function setProxy(proxyPort) {
-  const handleProxyRequest = proxyHandler(proxyPort)
+  // Remove existing handler if any
+  if (activeProxyHandler) {
+    browser.proxy.onRequest.removeListener(activeProxyHandler);
+    activeProxyHandler = null;
+  }
+
   if (proxyPort) {
     proxyEnabled = true;
     lastProxyPort = proxyPort;
     console.log("Enabling proxy at port: " + proxyPort);
+    activeProxyHandler = proxyHandler(proxyPort);
+    browser.proxy.onRequest.addListener(activeProxyHandler, { urls: ["<all_urls>"] });
   } else {
     proxyEnabled = false;
     console.log("Disabling proxy...");
-    browser.proxy.onRequest.removeListener(handleProxyRequest)
     browser.proxy.settings
       .set({
         value: {
@@ -192,9 +227,7 @@ function setProxy(proxyPort) {
       .then(() => {
         console.log("Proxy disabled.");
       });
-    return;
   }
-  browser.proxy.onRequest.addListener(handleProxyRequest, { urls: ["<all_urls>"] })
 }
 
 var profileID = "";
@@ -252,5 +285,33 @@ browser.runtime.onMessage.addListener((message, sender) => {
       disableProxy();
     }
     return Promise.resolve({ status: lastStatus });
+  }
+
+  if (message.command === "getExitNodes") {
+    console.log("bg: getExitNodes received");
+    if (deadPort || !nmPort) {
+      return Promise.resolve({ error: "Not connected to native host" });
+    }
+    if (pendingExitNodesResolve) {
+      return Promise.resolve({ error: "Request already in progress" });
+    }
+    return new Promise((resolve) => {
+      pendingExitNodesResolve = resolve;
+      nmPort.postMessage({ cmd: "get-exit-nodes" });
+    });
+  }
+
+  if (message.command === "setExitNode") {
+    console.log("bg: setExitNode received, IP:", message.exitNodeIP);
+    if (deadPort || !nmPort) {
+      return Promise.resolve({ error: "Not connected to native host" });
+    }
+    if (pendingSetExitNodeResolve) {
+      return Promise.resolve({ error: "Request already in progress" });
+    }
+    return new Promise((resolve) => {
+      pendingSetExitNodeResolve = resolve;
+      nmPort.postMessage({ cmd: "set-exit-node", exitNodeIP: message.exitNodeIP || "" });
+    });
   }
 });
