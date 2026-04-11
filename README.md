@@ -40,10 +40,10 @@ point.
 | -------- | ------- | ---- |
 | Chrome  | macOS | Works |
 | Chrome  | Linux | Works in theory, untested |
-| Chrome  | Windows | Registry install work not yet done |
+| Chrome  | Windows | Works |
 | Firefox  | macOS | Mostly works |
 | Firefox  | Linux | Mostly works in theory, untested |
-| Firefox  | Windows | Registry install work not yet done |
+| Firefox  | Windows | Mostly works in theory, untested |
 | Safari  | * | not possible; no support for Native Messaging |
 
 ## Developer instructions
@@ -65,5 +65,3 @@ To log out, for now you need to remove & re-add the extension.
 ## End user instructions
 
 Don't use it yet. It's too rough. See status above.
-
-
