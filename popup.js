@@ -45,9 +45,15 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     if (status.needsLogin) {
-      stateDisplay.innerHTML = status.browseToURL
-        ? `<b><a href='#login'>Log in</a></b>`
-        : "<b>Login required; no URL</b>";
+      if (status.browseToURL) {
+        stateDisplay.innerHTML = `<b><a href='#login'>Log in</a></b>`;
+        stateDisplay.querySelector("a").addEventListener("click", (e) => {
+          e.preventDefault();
+          chrome.tabs.create({ url: status.browseToURL });
+        });
+      } else {
+        stateDisplay.innerHTML = "<b>Login required; no URL</b>";
+      }
       return;
     }
     if (typeof status === "string" && status === "Disconnected") {

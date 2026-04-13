@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"log/syslog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -70,15 +69,7 @@ To register it once, run:
 
 	h := newHost(os.Stdin, os.Stdout)
 
-	if w, err := syslog.Dial("tcp", "localhost:5555", syslog.LOG_INFO, "browser"); err == nil {
-		log.Printf("syslog dialed")
-		h.logf = func(f string, a ...any) {
-			fmt.Fprintf(w, f, a...)
-		}
-		log.SetOutput(w)
-	} else {
-		log.Printf("syslog: %v", err)
-	}
+	trySetSyslog(&h.logf)
 
 	ln := h.getProxyListener()
 	port := ln.Addr().(*net.TCPAddr).Port
@@ -112,8 +103,10 @@ func getTargetDir(browserByte string) (string, error) {
 		} else if browserByte == "F" {
 			dir = filepath.Join(home, "Library", "Application Support", "Mozilla", "NativeMessagingHosts")
 		}
+	case "windows":
+		dir = filepath.Join(home, "AppData", "Local", "TailscaleBrowserExt")
 	default:
-		return "", fmt.Errorf("TODO: implement support for installing on %q", runtime.GOOS)
+		return "", fmt.Errorf("unsupported OS %q", runtime.GOOS)
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
@@ -127,7 +120,11 @@ func uninstall() error {
 		if err != nil {
 			return err
 		}
-		targetBin := filepath.Join(targetDir, "ts-browser-ext")
+		binName := "ts-browser-ext"
+		if runtime.GOOS == "windows" {
+			binName += ".exe"
+		}
+		targetBin := filepath.Join(targetDir, binName)
 		targetJSON := filepath.Join(targetDir, "com.tailscale.browserext.chrome.json")
 		if browserByte == "F" {
 			targetJSON = filepath.Join(targetDir, "com.tailscale.browserext.firefox.json")
@@ -137,6 +134,9 @@ func uninstall() error {
 		}
 		if err := os.Remove(targetJSON); err != nil && !os.IsNotExist(err) {
 			return err
+		}
+		if err := uninstallRegistry(browserByte); err != nil {
+			return fmt.Errorf("removing registry key: %w", err)
 		}
 	}
 	return nil
@@ -167,12 +167,20 @@ func install(installArg string) error {
 	if err != nil {
 		return err
 	}
-	targetBin := filepath.Join(targetDir, "ts-browser-ext")
+	binName := "ts-browser-ext"
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	targetBin := filepath.Join(targetDir, binName)
 	if err := os.WriteFile(targetBin, binary, 0755); err != nil {
 		return err
 	}
 	log.SetFlags(0)
 	log.Printf("copied binary to %v", targetBin)
+
+	// Use forward slashes in the JSON path so it works on all platforms
+	// (Chrome/Firefox on Windows accept forward slashes).
+	jsonBinPath := filepath.ToSlash(targetBin)
 
 	var targetJSON string
 	var jsonConf []byte
@@ -188,7 +196,7 @@ func install(installArg string) error {
 		"allowed_origins": [
 			"chrome-extension://%s/"
 		]
-	  }`, targetBin, extension)
+	  }`, jsonBinPath, extension)
 	case "F":
 		targetJSON = filepath.Join(targetDir, "com.tailscale.browserext.firefox.json")
 		jsonConf = fmt.Appendf(nil, `{
@@ -199,7 +207,7 @@ func install(installArg string) error {
 		"allowed_extensions": [
 			"browser-ext@tailscale.com"
 		]
-	  }`, targetBin)
+	  }`, jsonBinPath)
 	default:
 		return fmt.Errorf("unknown browser prefix byte %q", browserByte)
 	}
@@ -207,6 +215,10 @@ func install(installArg string) error {
 		return err
 	}
 	log.Printf("wrote registration to %v", targetJSON)
+
+	if err := installRegistry(browserByte, targetJSON); err != nil {
+		return fmt.Errorf("writing registry: %w", err)
+	}
 	return nil
 }
 
