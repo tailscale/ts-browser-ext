@@ -114,17 +114,20 @@ func getTargetDir(browserByte string) (string, error) {
 	return dir, nil
 }
 
+func binaryName() string {
+	if runtime.GOOS == "windows" {
+		return "ts-browser-ext.exe"
+	}
+	return "ts-browser-ext"
+}
+
 func uninstall() error {
 	for _, browserByte := range []string{"C", "F"} {
 		targetDir, err := getTargetDir(browserByte)
 		if err != nil {
 			return err
 		}
-		binName := "ts-browser-ext"
-		if runtime.GOOS == "windows" {
-			binName += ".exe"
-		}
-		targetBin := filepath.Join(targetDir, binName)
+		targetBin := filepath.Join(targetDir, binaryName())
 		targetJSON := filepath.Join(targetDir, "com.tailscale.browserext.chrome.json")
 		if browserByte == "F" {
 			targetJSON = filepath.Join(targetDir, "com.tailscale.browserext.firefox.json")
@@ -167,11 +170,7 @@ func install(installArg string) error {
 	if err != nil {
 		return err
 	}
-	binName := "ts-browser-ext"
-	if runtime.GOOS == "windows" {
-		binName += ".exe"
-	}
-	targetBin := filepath.Join(targetDir, binName)
+	targetBin := filepath.Join(targetDir, binaryName())
 	if err := os.WriteFile(targetBin, binary, 0755); err != nil {
 		return err
 	}

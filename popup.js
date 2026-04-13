@@ -1,11 +1,3 @@
-var lastStatus;
-
-function browseToURL() {
-  if (lastStatus && lastStatus.browseToURL) {
-    chrome.tabs.create({ url: lastStatus.browseToURL });
-  }
-}
-
 document.addEventListener("DOMContentLoaded", () => {
   const toggleSlider = document.getElementById("toggleSlider");
   const slider = document.querySelector(".slider");
