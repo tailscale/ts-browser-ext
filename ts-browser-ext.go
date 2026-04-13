@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/gorilla/csrf"
-	"tailscale.com/client/tailscale"
+	"tailscale.com/client/local"
 	"tailscale.com/client/web"
 	"tailscale.com/hostinfo"
 	"tailscale.com/ipn"
@@ -402,7 +402,7 @@ func (h *host) handleInit(msg *request) (ret error) {
 	return nil
 }
 
-func (h *host) watchIPNBus(wc *tailscale.IPNBusWatcher) {
+func (h *host) watchIPNBus(wc *local.IPNBusWatcher) {
 	h.mu.Lock()
 	h.watchDead = false
 	h.mu.Unlock()
@@ -412,7 +412,7 @@ func (h *host) watchIPNBus(wc *tailscale.IPNBusWatcher) {
 	}
 }
 
-func (h *host) updateFromWatcher(wc *tailscale.IPNBusWatcher) bool {
+func (h *host) updateFromWatcher(wc *local.IPNBusWatcher) bool {
 	n, err := wc.Next()
 
 	defer h.sendStatus()
