@@ -48,22 +48,32 @@ point.
 
 ## Developer instructions
 
-* use Chrome (for now)
-* Extensions...
-* Manage Extensions...
-* click "Developer Mode"
-* Load Unpacked...
-* navigate to directory where you cloned this repo...
-* install
-* pin the extension
-* click it
-* follow instructions to `go install` the backend part
-* click again, "Log in"
-
 To log out, for now you need to remove & re-add the extension.
+
+### Chrome
+
+1. Open the Extensions page (`chrome://extensions`) or Extensions... > Manage Extensions...
+2. Toggle "Developer mode" on.
+3. Click "Load unpacked".
+4. Navigate to the directory where you cloned this repo and select it.
+5. Pin the extension to the toolbar.
+6. Click the extension icon.
+7. Follow the instructions in the popup to run the printed `go run ...` command, which builds and registers the native messaging backend.
+8. Click the extension icon again and select "Log in".
+
+### Firefox
+
+1. Open the Debugging page (`about:debugging#/runtime/this-firefox`).
+2. Click "Load Temporary Add-on...".
+3. Navigate to the `firefox/` subdirectory of this repo and select its `manifest.json`.
+4. Open the Add-ons Manager (`about:addons`), select the Tailscale extension, and under "Run in Private Windows" choose "Allow" if you want it to be active in private browsing.
+5. Pin the extension to the toolbar.
+6. Click the extension icon.
+7. Follow the instructions in the popup to run the printed `go run ...` command, which builds and registers the native messaging backend.
+8. Click the extension icon again and select "Log in".
+
+Temporary add-ons in Firefox are removed when the browser restarts, so you'll need to reload it from `about:debugging` each session.
 
 ## End user instructions
 
 Don't use it yet. It's too rough. See status above.
-
-
