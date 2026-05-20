@@ -32,6 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function updateStatus(status) {
+    lastStatus = status;
     isLoading = false;
     hasReceivedInitialState = true;
     if (status.error) {
@@ -48,6 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
       stateDisplay.innerHTML = status.browseToURL
         ? `<b><a href='#login'>Log in</a></b>`
         : "<b>Login required; no URL</b>";
+      stateDisplay.querySelector('a').onclick = browseToURL;
       return;
     }
     if (typeof status === "string" && status === "Disconnected") {
