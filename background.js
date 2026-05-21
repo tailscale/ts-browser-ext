@@ -82,10 +82,12 @@ chrome.runtime.onConnect.addListener((port) => {
 // browserByte returns either "F" for Firefox or "C" for chrome.
 // Other browsers return "?".
 function browserByte() {
+  // Detect Firefox by user agent rather than `typeof browser`, because some
+  // Chromium-based browsers also expose the `browser` global.
+  if (typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.includes("Firefox")) {
+    return "F";
+  }
   if (typeof chrome !== "undefined") {
-    if (typeof browser !== "undefined") {
-      return "F"; // Firefox supports both `chrome` and `browser`
-    }
     return "C";
   }
   return "?";
