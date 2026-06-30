@@ -76,10 +76,13 @@ browser.runtime.onConnect.addListener((port) => {
 
 // browserByte returns either "F" for Firefox or "C" for chrome.
 // Other browsers return "?".
+// Firefox aliases `chrome.*` to its `browser.*` APIs, so
+// `chrome.runtime.getURL` works on both; the returned scheme is what differs.
+// See https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Chrome_incompatibilities
 function browserByte() {
-  if (typeof browser !== "undefined") {
-    return "F";
-  }
+  const url = chrome.runtime.getURL("");
+  if (url.startsWith("moz-extension://")) return "F";
+  if (url.startsWith("chrome-extension://")) return "C";
   return "?";
 }
 
@@ -87,7 +90,7 @@ function sendPopupStatus() {
   // firefox requires that extensions settings proxies have private browsing access
   browser.extension.isAllowedIncognitoAccess().then(isAllowed => {
     if (!isAllowed) {
-          sendToPopup({
+      sendToPopup({
         needsIncognitoPermission: true
       });
     }
