@@ -74,16 +74,10 @@ browser.runtime.onConnect.addListener((port) => {
   sendPopupStatus();
 });
 
-// browserByte returns either "F" for Firefox or "C" for chrome.
-// Other browsers return "?".
-// Firefox aliases `chrome.*` to its `browser.*` APIs, so
-// `chrome.runtime.getURL` works on both; the returned scheme is what differs.
-// See https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Chrome_incompatibilities
+// browserByte returns "F" for Firefox.
+// The Chrome copy of this file returns "C".
 function browserByte() {
-  const url = chrome.runtime.getURL("");
-  if (url.startsWith("moz-extension://")) return "F";
-  if (url.startsWith("chrome-extension://")) return "C";
-  return "?";
+  return "F";
 }
 
 function sendPopupStatus() {
