@@ -89,11 +89,12 @@ function sendPopupStatus() {
   if (deadPort) {
     setPopupIcon("need-install");
     console.log("sendPopupStatus... no nmPort");
+    const suffix = browserByte() + chrome.runtime.id;
     sendToPopup({
-      installCmd:
-        "go run github.com/tailscale/ts-browser-ext@main --install=" +
-        browserByte() +
-        chrome.runtime.id,
+      installCmds: {
+        remote: "go run github.com/tailscale/ts-browser-ext@main --install=" + suffix,
+        local: "go run . --install=" + suffix,
+      },
     });
     return;
   }
@@ -124,6 +125,15 @@ function connectToNativeHost() {
   nmPort.onDisconnect.addListener(() => {
     deadPort = true;
     setPopupIcon("need-install");
+    // Clean up pending exit node callbacks to prevent hung promises
+    if (pendingExitNodesCallback) {
+      pendingExitNodesCallback({ error: "Disconnected from native host" });
+      pendingExitNodesCallback = null;
+    }
+    if (pendingSetExitNodeCallback) {
+      pendingSetExitNodeCallback({ error: "Disconnected from native host" });
+      pendingSetExitNodeCallback = null;
+    }
     disableProxy();
     const error = chrome.runtime.lastError;
     if (error) {
@@ -156,6 +166,20 @@ function connectToNativeHost() {
     }
     if (message.status) {
       lastStatus = message.status;
+    }
+    if (message.exitNodes) {
+      console.log("got exitNodes response:", message.exitNodes);
+      if (pendingExitNodesCallback) {
+        pendingExitNodesCallback(message.exitNodes);
+        pendingExitNodesCallback = null;
+      }
+    }
+    if (message.exitNodeSet) {
+      console.log("got exitNodeSet response:", message.exitNodeSet);
+      if (pendingSetExitNodeCallback) {
+        pendingSetExitNodeCallback(message.exitNodeSet);
+        pendingSetExitNodeCallback = null;
+      }
     }
     maybeSendInit();
     sendPopupStatus();
@@ -233,6 +257,10 @@ chrome.storage.local.get("profileId", (result) => {
   }
 });
 
+// Pending response callbacks for exit node requests
+let pendingExitNodesCallback = null;
+let pendingSetExitNodeCallback = null;
+
 // Listener for messages from the popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("bg: Received message:", message);
@@ -253,6 +281,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.log("bg: toggleProxy off, sent disconnected response");
     }
     setPopupIcon(proxyEnabled);
+    return true; // Keep the message channel open for the async response
+  }
+
+  if (message.command === "getExitNodes") {
+    console.log("bg: getExitNodes received");
+    if (deadPort || !nmPort) {
+      sendResponse({ error: "Not connected to native host" });
+      return true;
+    }
+    if (pendingExitNodesCallback) {
+      sendResponse({ error: "Request already in progress" });
+      return true;
+    }
+    pendingExitNodesCallback = sendResponse;
+    nmPort.postMessage({ cmd: "get-exit-nodes" });
+    return true; // Keep the message channel open for the async response
+  }
+
+  if (message.command === "setExitNode") {
+    console.log("bg: setExitNode received, IP:", message.exitNodeIP);
+    if (deadPort || !nmPort) {
+      sendResponse({ error: "Not connected to native host" });
+      return true;
+    }
+    if (pendingSetExitNodeCallback) {
+      sendResponse({ error: "Request already in progress" });
+      return true;
+    }
+    pendingSetExitNodeCallback = sendResponse;
+    nmPort.postMessage({ cmd: "set-exit-node", exitNodeIP: message.exitNodeIP || "" });
     return true; // Keep the message channel open for the async response
   }
 });

@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -275,6 +276,10 @@ func (h *host) handleMessage(msg *request) error {
 		return h.handleUp()
 	case CmdDown:
 		return h.handleDown()
+	case CmdGetExitNodes:
+		h.handleGetExitNodes()
+	case CmdSetExitNode:
+		h.handleSetExitNode(msg.ExitNodeIP)
 	default:
 		h.logf("unknown command %q", msg.Cmd)
 	}
@@ -287,6 +292,118 @@ func (h *host) handleUp() error {
 
 func (h *host) handleDown() error {
 	return h.setWantRunning(false)
+}
+
+func (h *host) handleGetExitNodes() {
+	result := &exitNodesResult{}
+
+	h.mu.Lock()
+	if h.ts.Sys() == nil {
+		h.mu.Unlock()
+		result.Error = "not initialized"
+		h.send(&reply{ExitNodes: result})
+		return
+	}
+	h.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	lc, err := h.ts.LocalClient()
+	if err != nil {
+		result.Error = err.Error()
+		h.send(&reply{ExitNodes: result})
+		return
+	}
+
+	st, err := lc.Status(ctx)
+	if err != nil {
+		result.Error = err.Error()
+		h.send(&reply{ExitNodes: result})
+		return
+	}
+
+	// Collect exit nodes from peers
+	for _, peer := range st.Peer {
+		if peer.ExitNodeOption {
+			ip := ""
+			if len(peer.TailscaleIPs) > 0 {
+				ip = peer.TailscaleIPs[0].String()
+			}
+			if ip != "" {
+				// Use DNSName (short version) for display, matching the settings UI
+				// DNSName is like "machine.tailnet.ts.net", we want just "machine"
+				name := peer.HostName
+				if peer.DNSName != "" {
+					name = strings.TrimSuffix(peer.DNSName, ".")
+					if idx := strings.Index(name, "."); idx > 0 {
+						name = name[:idx]
+					}
+				}
+				result.Nodes = append(result.Nodes, exitNode{
+					Name: name,
+					IP:   ip,
+				})
+				// Use ExitNode bool to detect if this peer is the current exit node
+				// This avoids IPv4/IPv6 format mismatches when comparing IPs
+				if peer.ExitNode {
+					result.CurrentNode = ip
+				}
+			}
+		}
+	}
+
+	h.send(&reply{ExitNodes: result})
+}
+
+func (h *host) handleSetExitNode(exitNodeIP string) {
+	result := &exitNodeSetResult{}
+
+	h.mu.Lock()
+	if h.ts.Sys() == nil {
+		h.mu.Unlock()
+		result.Error = "not initialized"
+		h.send(&reply{ExitNodeSet: result})
+		return
+	}
+	h.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	lc, err := h.ts.LocalClient()
+	if err != nil {
+		result.Error = err.Error()
+		h.send(&reply{ExitNodeSet: result})
+		return
+	}
+
+	var exitIP netip.Addr
+	if exitNodeIP != "" {
+		exitIP, err = netip.ParseAddr(exitNodeIP)
+		if err != nil {
+			result.Error = fmt.Sprintf("invalid exit node IP: %v", err)
+			h.send(&reply{ExitNodeSet: result})
+			return
+		}
+	}
+
+	if _, err := lc.EditPrefs(ctx, &ipn.MaskedPrefs{
+		ExitNodeIPSet: true,
+		ExitNodeIDSet: true, // Also clear/set ID to ensure IP takes precedence or both are cleared
+		Prefs: ipn.Prefs{
+			ExitNodeIP: exitIP,
+			ExitNodeID: "", // Always clear ID when setting by IP (or clearing both)
+		},
+	}); err != nil {
+		result.Error = fmt.Sprintf("failed to set exit node: %v", err)
+		h.send(&reply{ExitNodeSet: result})
+		return
+	}
+
+	result.Success = true
+	h.send(&reply{ExitNodeSet: result})
+	h.sendStatus() // Send updated status
 }
 
 func (h *host) setWantRunning(want bool) error {
@@ -521,10 +638,12 @@ func (h *host) sendStatus() {
 type Cmd string
 
 const (
-	CmdInit      Cmd = "init"
-	CmdUp        Cmd = "up"
-	CmdDown      Cmd = "down"
-	CmdGetStatus Cmd = "get-status"
+	CmdInit         Cmd = "init"
+	CmdUp           Cmd = "up"
+	CmdDown         Cmd = "down"
+	CmdGetStatus    Cmd = "get-status"
+	CmdGetExitNodes Cmd = "get-exit-nodes"
+	CmdSetExitNode  Cmd = "set-exit-node"
 )
 
 // request is a message from the browser extension.
@@ -540,7 +659,9 @@ type request struct {
 	// UUID-ish: hex and hyphens only, and too long.
 	InitID string `json:"initID,omitempty"`
 
-	// ...
+	// ExitNodeIP is the IP address of the exit node to use.
+	// Empty string means no exit node (direct connection).
+	ExitNodeIP string `json:"exitNodeIP,omitempty"`
 }
 
 // reply is a message to the browser extension.
@@ -554,6 +675,31 @@ type reply struct {
 	Status *status `json:"status,omitempty"`
 
 	Init *initResult `json:"init,omitempty"`
+
+	// ExitNodes is sent in response to a [CmdGetExitNodes] [request.Cmd].
+	ExitNodes *exitNodesResult `json:"exitNodes,omitempty"`
+
+	// ExitNodeSet is sent in response to a [CmdSetExitNode] [request.Cmd].
+	ExitNodeSet *exitNodeSetResult `json:"exitNodeSet,omitempty"`
+}
+
+// exitNode represents an available exit node.
+type exitNode struct {
+	Name string `json:"name"` // Hostname of the exit node
+	IP   string `json:"ip"`   // IP address to use when setting
+}
+
+// exitNodesResult is the response to a get-exit-nodes command.
+type exitNodesResult struct {
+	Nodes       []exitNode `json:"nodes"`
+	CurrentNode string     `json:"currentNode"` // IP of currently selected exit node, empty if none
+	Error       string     `json:"error,omitempty"`
+}
+
+// exitNodeSetResult is the response to a set-exit-node command.
+type exitNodeSetResult struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
 }
 
 type procRunningResult struct {

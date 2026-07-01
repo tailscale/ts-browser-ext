@@ -11,11 +11,83 @@ document.addEventListener("DOMContentLoaded", () => {
   const slider = document.querySelector(".slider");
   const settingsButton = document.getElementById("settingsButton");
   const stateDisplay = document.getElementById("state");
+  const exitNodeSelect = document.getElementById("exitNodeSelect");
   let isConnected = false;
   let isLoading = true;
   let hasReceivedInitialState = false;
+  let hasLoadedExitNodes = false;
+  let isLoadingExitNodes = false;
 
   const port = chrome.runtime.connect({ name: "popup" });
+
+  // Fetch and populate exit nodes
+  function refreshExitNodes() {
+    if (isLoadingExitNodes) return;
+    isLoadingExitNodes = true;
+    console.log("Refreshing exit nodes...");
+
+    chrome.runtime.sendMessage({ command: "getExitNodes" }, (response) => {
+      isLoadingExitNodes = false;
+      if (chrome.runtime.lastError) {
+        console.error("getExitNodes failed:", chrome.runtime.lastError.message);
+        exitNodeSelect.disabled = true;
+        hasLoadedExitNodes = false; // Allow retry
+        return;
+      }
+      console.log("Got exit nodes response:", response);
+      if (response && !response.error) {
+        populateExitNodes(response.nodes || [], response.currentNode || "");
+        exitNodeSelect.disabled = false;
+        hasLoadedExitNodes = true; // Mark as successfully loaded
+      } else {
+        console.log("Failed to get exit nodes:", response?.error);
+        exitNodeSelect.disabled = true;
+        hasLoadedExitNodes = false;
+      }
+    });
+  }
+
+  function populateExitNodes(nodes, currentNode) {
+    // Clear existing options except "None"
+    exitNodeSelect.innerHTML = '<option value="">None</option>';
+
+    // Add exit node options
+    nodes.forEach((node) => {
+      const option = document.createElement("option");
+      option.value = node.ip;
+      option.textContent = node.name;
+      if (node.ip === currentNode) {
+        option.selected = true;
+      }
+      exitNodeSelect.appendChild(option);
+    });
+  }
+
+  // Handle exit node selection change
+  exitNodeSelect.addEventListener("change", () => {
+    const selectedIP = exitNodeSelect.value;
+    console.log("Exit node selection changed to:", selectedIP || "None");
+
+    exitNodeSelect.disabled = true;
+    chrome.runtime.sendMessage(
+      { command: "setExitNode", exitNodeIP: selectedIP },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("setExitNode failed:", chrome.runtime.lastError.message);
+          exitNodeSelect.disabled = false;
+          refreshExitNodes();
+          return;
+        }
+        console.log("Set exit node response:", response);
+        exitNodeSelect.disabled = false;
+        if (response && !response.success && response.error) {
+          console.error("Failed to set exit node:", response.error);
+          // Refresh to get the actual current state
+          refreshExitNodes();
+        }
+      }
+    );
+  });
 
   function updateSliderState() {
     if (isLoading) {
@@ -38,21 +110,36 @@ document.addEventListener("DOMContentLoaded", () => {
       if (status.error === "State: Stopped") {
         stateDisplay.textContent = "Disconnected";
         isConnected = false;
+        exitNodeSelect.disabled = true;
         updateSliderState();
         return;
       }
       stateDisplay.textContent = `Error: ${status.error}`;
+      exitNodeSelect.disabled = true;
       return;
     }
     if (status.needsLogin) {
+      lastStatus = status; // Save for browseToURL
       stateDisplay.innerHTML = status.browseToURL
-        ? `<b><a href='#login'>Log in</a></b>`
+        ? `<b><a href="#" id="loginLink">Log in</a></b>`
         : "<b>Login required; no URL</b>";
+      // Add click handler for login link
+      const loginLink = document.getElementById("loginLink");
+      if (loginLink) {
+        loginLink.addEventListener("click", (e) => {
+          e.preventDefault();
+          if (lastStatus && lastStatus.browseToURL) {
+            chrome.tabs.create({ url: lastStatus.browseToURL });
+          }
+        });
+      }
+      exitNodeSelect.disabled = true;
       return;
     }
     if (typeof status === "string" && status === "Disconnected") {
       stateDisplay.textContent = "Disconnected";
       isConnected = false;
+      exitNodeSelect.disabled = true;
       updateSliderState();
       return;
     }
@@ -62,14 +149,43 @@ document.addEventListener("DOMContentLoaded", () => {
         : "Disconnected";
       isConnected = status.running;
       updateSliderState();
+      // Refresh exit nodes once when first connected
+      if (status.running && !hasLoadedExitNodes) {
+        refreshExitNodes();
+      } else if (!status.running) {
+        hasLoadedExitNodes = false;
+        exitNodeSelect.disabled = true;
+      }
     }
   }
 
   port.onMessage.addListener((msg) => {
     console.log("Received from background:", JSON.stringify(msg));
-    if (msg.installCmd) {
-      console.log("Received install command");
-      stateDisplay.innerHTML = `<b>Installation needed. Run:</b><pre>${msg.installCmd}</pre>`;
+    if (msg.installCmds) {
+      console.log("Received install commands");
+      stateDisplay.innerHTML = `
+        <div class="install-container">
+          <b>Installation needed. Run:</b>
+          <pre>${msg.installCmds.remote}</pre>
+          <button class="copy-button" data-cmd="${msg.installCmds.remote}">Copy command</button>
+          
+          <div style="margin-top: 12px"><b>Or for local dev:</b></div>
+          <pre>${msg.installCmds.local}</pre>
+          <button class="copy-button" data-cmd="${msg.installCmds.local}">Copy local command</button>
+        </div>`;
+
+      document.querySelectorAll(".copy-button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const cmd = btn.getAttribute("data-cmd");
+          const originalText = btn.textContent;
+          navigator.clipboard.writeText(cmd).then(() => {
+            btn.textContent = "Copied!";
+            setTimeout(() => {
+              btn.textContent = originalText;
+            }, 2000);
+          });
+        });
+      });
       toggleSlider.disabled = true;
       settingsButton.hidden = true;
       return;
