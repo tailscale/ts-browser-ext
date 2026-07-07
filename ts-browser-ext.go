@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"log/syslog"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"regexp"
@@ -70,16 +70,6 @@ To register it once, run:
 
 	h := newHost(os.Stdin, os.Stdout)
 
-	if w, err := syslog.Dial("tcp", "localhost:5555", syslog.LOG_INFO, "browser"); err == nil {
-		log.Printf("syslog dialed")
-		h.logf = func(f string, a ...any) {
-			fmt.Fprintf(w, f, a...)
-		}
-		log.SetOutput(w)
-	} else {
-		log.Printf("syslog: %v", err)
-	}
-
 	ln := h.getProxyListener()
 	port := ln.Addr().(*net.TCPAddr).Port
 	h.logf("Proxy listening on localhost:%v", port)
@@ -112,6 +102,9 @@ func getTargetDir(browserByte string) (string, error) {
 		} else if browserByte == "F" {
 			dir = filepath.Join(home, "Library", "Application Support", "Mozilla", "NativeMessagingHosts")
 		}
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		dir = filepath.Join(localAppData, "Tailscale")
 	default:
 		return "", fmt.Errorf("TODO: implement support for installing on %q", runtime.GOOS)
 	}
@@ -127,7 +120,11 @@ func uninstall() error {
 		if err != nil {
 			return err
 		}
-		targetBin := filepath.Join(targetDir, "ts-browser-ext")
+		targetBinName := "ts-browser-ext"
+		if runtime.GOOS == "windows" {
+			targetBinName = "ts-browser-ext.exe"
+		}
+		targetBin := filepath.Join(targetDir, targetBinName)
 		targetJSON := filepath.Join(targetDir, "com.tailscale.browserext.chrome.json")
 		if browserByte == "F" {
 			targetJSON = filepath.Join(targetDir, "com.tailscale.browserext.firefox.json")
@@ -137,6 +134,11 @@ func uninstall() error {
 		}
 		if err := os.Remove(targetJSON); err != nil && !os.IsNotExist(err) {
 			return err
+		}
+		if runtime.GOOS == "windows" {
+			if err := removeWindowsManifestRegistryKey(browserByte); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -167,12 +169,17 @@ func install(installArg string) error {
 	if err != nil {
 		return err
 	}
-	targetBin := filepath.Join(targetDir, "ts-browser-ext")
+	targetBinName := "ts-browser-ext"
+	if runtime.GOOS == "windows" {
+		targetBinName = "ts-browser-ext.exe"
+	}
+	targetBin := filepath.Join(targetDir, targetBinName)
 	if err := os.WriteFile(targetBin, binary, 0755); err != nil {
 		return err
 	}
 	log.SetFlags(0)
 	log.Printf("copied binary to %v", targetBin)
+	targetBinJSONPath := filepath.ToSlash(targetBin)
 
 	var targetJSON string
 	var jsonConf []byte
@@ -188,7 +195,7 @@ func install(installArg string) error {
 		"allowed_origins": [
 			"chrome-extension://%s/"
 		]
-	  }`, targetBin, extension)
+	  }`, targetBinJSONPath, extension)
 	case "F":
 		targetJSON = filepath.Join(targetDir, "com.tailscale.browserext.firefox.json")
 		jsonConf = fmt.Appendf(nil, `{
@@ -199,7 +206,7 @@ func install(installArg string) error {
 		"allowed_extensions": [
 			"browser-ext@tailscale.com"
 		]
-	  }`, targetBin)
+	  }`, targetBinJSONPath)
 	default:
 		return fmt.Errorf("unknown browser prefix byte %q", browserByte)
 	}
@@ -207,7 +214,52 @@ func install(installArg string) error {
 		return err
 	}
 	log.Printf("wrote registration to %v", targetJSON)
+	if runtime.GOOS == "windows" {
+		if err := setWindowsManifestRegistryKey(browserByte, targetJSON); err != nil {
+			return err
+		}
+		log.Printf("wrote native messaging registry key for %s", browserByte)
+	}
 	return nil
+}
+
+func windowsManifestRegistryKey(browserByte string) (string, error) {
+	switch browserByte {
+	case "C":
+		return `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.tailscale.browserext.chrome`, nil
+	case "F":
+		return `HKCU\Software\Mozilla\NativeMessagingHosts\com.tailscale.browserext.firefox`, nil
+	default:
+		return "", fmt.Errorf("unknown browser prefix byte %q", browserByte)
+	}
+}
+
+func setWindowsManifestRegistryKey(browserByte, targetJSON string) error {
+	regKey, err := windowsManifestRegistryKey(browserByte)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("reg", "add", regKey, "/ve", "/t", "REG_SZ", "/d", targetJSON, "/f")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("reg add %q: %w (%s)", regKey, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func removeWindowsManifestRegistryKey(browserByte string) error {
+	regKey, err := windowsManifestRegistryKey(browserByte)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("reg", "delete", regKey, "/f")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(strings.ToLower(string(out)), "unable to find") {
+		return nil
+	}
+	return fmt.Errorf("reg delete %q: %w (%s)", regKey, err, strings.TrimSpace(string(out)))
 }
 
 type host struct {
