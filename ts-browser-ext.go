@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"github.com/gorilla/csrf"
+	"golang.org/x/net/dns/dnsmessage"
 	"tailscale.com/client/tailscale"
 	"tailscale.com/client/web"
 	"tailscale.com/hostinfo"
@@ -492,7 +494,91 @@ func (h *host) userDial(ctx context.Context, netw, addr string) (net.Conn, error
 		return nil, fmt.Errorf("no tsnet.Server")
 	}
 
+	// UserDial resolves hostnames itself and ignores the tailnet's split-DNS
+	// config unless an exit node is set. Try tailscaled's own resolver first
+	// so names served by split-DNS nameservers (e.g. behind a subnet router)
+	// work without an exit node, and fall back to the default path otherwise.
+	if hostname, port, err := net.SplitHostPort(addr); err == nil {
+		if _, perr := netip.ParseAddr(hostname); perr != nil {
+			if ips := h.resolveViaTailnet(ctx, hostname); len(ips) > 0 {
+				var lastErr error
+				for _, ip := range ips {
+					c, err := sys.Dialer.Get().UserDial(ctx, netw, net.JoinHostPort(ip.String(), port))
+					if err == nil {
+						return c, nil
+					}
+					lastErr = err
+				}
+				return nil, lastErr
+			}
+		}
+	}
+
 	return sys.Dialer.Get().UserDial(ctx, netw, addr)
+}
+
+const tailnetDNSMissTTL = 5 * time.Minute
+
+var (
+	tailnetDNSMissMu sync.Mutex
+	tailnetDNSMiss   = map[string]time.Time{} // hostname -> time of last miss
+)
+
+// resolveViaTailnet resolves name using tailscaled's DNS resolver, which
+// honors the tailnet's split-DNS configuration. It returns nil if the tailnet
+// has no answer; such misses are remembered briefly so that ordinary internet
+// hostnames don't pay for a failed lookup on every dial.
+func (h *host) resolveViaTailnet(ctx context.Context, name string) []netip.Addr {
+	tailnetDNSMissMu.Lock()
+	missed, ok := tailnetDNSMiss[name]
+	tailnetDNSMissMu.Unlock()
+	if ok && time.Since(missed) < tailnetDNSMissTTL {
+		return nil
+	}
+
+	lc, err := h.ts.LocalClient()
+	if err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	var out []netip.Addr
+	for _, qtype := range []string{"A", "AAAA"} {
+		raw, _, err := lc.QueryDNS(ctx, name, qtype)
+		if err != nil {
+			continue
+		}
+		var p dnsmessage.Parser
+		if _, err := p.Start(raw); err != nil {
+			continue
+		}
+		if err := p.SkipAllQuestions(); err != nil {
+			continue
+		}
+		answers, err := p.AllAnswers()
+		if err != nil {
+			continue
+		}
+		for _, a := range answers {
+			switch b := a.Body.(type) {
+			case *dnsmessage.AResource:
+				out = append(out, netip.AddrFrom4(b.A))
+			case *dnsmessage.AAAAResource:
+				out = append(out, netip.AddrFrom16(b.AAAA))
+			}
+		}
+	}
+
+	if len(out) == 0 {
+		tailnetDNSMissMu.Lock()
+		if len(tailnetDNSMiss) > 4096 {
+			clear(tailnetDNSMiss)
+		}
+		tailnetDNSMiss[name] = time.Now()
+		tailnetDNSMissMu.Unlock()
+	}
+	return out
 }
 
 func (h *host) sendStatus() {
