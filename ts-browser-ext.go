@@ -32,7 +32,6 @@ import (
 	"tailscale.com/net/socks5"
 	"tailscale.com/tsnet"
 	"tailscale.com/types/logger"
-	"tailscale.com/types/netmap"
 )
 
 var (
@@ -221,7 +220,7 @@ type host struct {
 
 	mu              sync.Mutex
 	watchDead       bool
-	lastNetmap      *netmap.NetworkMap
+	lastTailnet     string
 	lastState       ipn.State
 	lastBrowseToURL string
 	ctx             context.Context // for IPN bus; canceled by cancelCtx
@@ -374,7 +373,7 @@ func (h *host) handleInit(msg *request) (ret error) {
 		return fmt.Errorf("getting local client: %w", err)
 	}
 
-	wc, err := lc.WatchIPNBus(h.ctx, ipn.NotifyInitialState|ipn.NotifyRateLimit)
+	wc, err := lc.WatchIPNBus(h.ctx, ipn.NotifyInitialState|ipn.NotifyInitialStatus)
 	if err != nil {
 		return fmt.Errorf("watching IPN bus: %w", err)
 	}
@@ -404,6 +403,19 @@ func (h *host) watchIPNBus(wc *tailscale.IPNBusWatcher) {
 func (h *host) updateFromWatcher(wc *tailscale.IPNBusWatcher) bool {
 	n, err := wc.Next()
 
+	// The netmap is no longer delivered on the IPN bus; ask for the tailnet
+	// name via Status whenever the node comes up.
+	var tailnet string
+	if err == nil && n.State != nil && *n.State == ipn.Running {
+		if lc, lerr := h.ts.LocalClient(); lerr == nil {
+			ctx, cancel := context.WithTimeout(h.ctx, 5*time.Second)
+			if st, serr := lc.Status(ctx); serr == nil && st.CurrentTailnet != nil {
+				tailnet = st.CurrentTailnet.Name
+			}
+			cancel()
+		}
+	}
+
 	defer h.sendStatus()
 
 	h.mu.Lock()
@@ -415,8 +427,11 @@ func (h *host) updateFromWatcher(wc *tailscale.IPNBusWatcher) bool {
 		return false
 	}
 
-	if n.NetMap != nil {
-		h.lastNetmap = n.NetMap
+	if n.InitialStatus != nil && n.InitialStatus.CurrentTailnet != nil {
+		h.lastTailnet = n.InitialStatus.CurrentTailnet.Name
+	}
+	if tailnet != "" {
+		h.lastTailnet = tailnet
 	}
 	if n.State != nil {
 		h.lastState = *n.State
@@ -499,8 +514,8 @@ func (h *host) sendStatus() {
 	st := &status{}
 	h.mu.Lock()
 	st.Running = h.lastState == ipn.Running
-	if nm := h.lastNetmap; nm != nil {
-		st.Tailnet = nm.Domain
+	if h.lastTailnet != "" {
+		st.Tailnet = h.lastTailnet
 	}
 	if h.lastState == ipn.NeedsLogin {
 		st.NeedsLogin = true
